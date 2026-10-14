@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.tethera.follow-live</string>
+  <key>ProgramArguments</key><array>
+    <string>/Users/rdev/tethera/.venv/bin/python</string><string>-u</string><string>/Users/rdev/tethera/scripts/follow_live.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/rdev/tethera</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/Users/rdev/tethera/data/follow_live.log</string>
+  <key>StandardErrorPath</key><string>/Users/rdev/tethera/data/follow_live.log</string>
+</dict></plist>
