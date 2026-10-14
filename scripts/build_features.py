@@ -107,8 +107,13 @@ with psycopg.connect(DB) as conn, conn.cursor() as cur:
     t = time.time()
     cur.execute("SELECT max(block_time) FROM swaps"); end = cur.fetchone()[0]
     since_ts = None if since is None or end is None else end - __import__("datetime").timedelta(hours=since)
-    cur.execute(FEATURES_SQL, {"since": since_ts}); n = cur.rowcount
-    conn.commit(); log(f"features computed for {n} wallets in {time.time()-t:.1f}s")
+    for attempt in range(5):
+        try:
+            cur.execute(FEATURES_SQL, {"since": since_ts}); n = cur.rowcount
+            conn.commit(); break
+        except psycopg.errors.DeadlockDetected:
+            conn.rollback(); log(f"deadlock, retry {attempt+1}"); time.sleep(5)
+    log(f"features computed for {n} wallets in {time.time()-t:.1f}s")
     cur.execute(LABEL_SQL, cfg); conn.commit()
     cur.execute("UPDATE swaps s SET is_automated = f.is_automated FROM wallet_features f WHERE s.tx_from = f.wallet AND s.is_automated IS DISTINCT FROM f.is_automated")
     conn.commit()
@@ -122,3 +127,7 @@ with psycopg.connect(DB) as conn, conn.cursor() as cur:
     log("signal counts:", dict(cur.fetchall()))
     cur.execute("SELECT n_signals, count(*) FROM wallet_features WHERE n_swaps >= %s GROUP BY 1 ORDER BY 1", (cfg["min_swaps_to_label"],))
     log("signals per judged wallet:", dict(cur.fetchall()))
+
+    # keep the per-minute aggregates current (last 30 minutes, idempotent)
+    cur.execute("SELECT rollup_pool_minutes(now() - interval '30 minutes', now())"); conn.commit()
+    log(f"pool_minutes rolled up: {cur.fetchone()[0]} rows")
