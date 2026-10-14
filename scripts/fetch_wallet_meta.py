@@ -5,7 +5,7 @@ from dotenv import load_dotenv; load_dotenv(dotenv_path=os.path.join(os.path.dir
 import psycopg
 from tethera.rpc import Rpc
 
-rpc = Rpc(os.environ["CHAINSTACK_RPC_URL"], min_interval=0.5)   # gentle: shares the plan's RPS cap with the live follower
+rpc = Rpc(os.environ["CHAINSTACK_RPC_URL"], min_interval=2.0)   # gentle: shares the plan's RPS cap with the live follower
 log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
 with psycopg.connect(os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")) as conn, conn.cursor() as cur:
     cur.execute("SELECT wallet FROM wallet_features WHERE lifetime_tx_count IS NULL ORDER BY n_swaps DESC")
