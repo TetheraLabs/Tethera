@@ -40,7 +40,17 @@ class Rpc:
             try:
                 with urllib.request.urlopen(req, timeout=120) as resp:
                     self._last = time.time()
-                    return json.load(resp)
+                    out = json.load(resp)
+                items = out if isinstance(out, list) else [out]
+                limited = [o for o in items if isinstance(o, dict) and o.get("error", {}).get("code") == -32005]
+                if limited and attempt < self.retries - 1:
+                    data = limited[0]["error"].get("data") or {}
+                    hint = str(data.get("try_again_in", "")).replace("ms", "").replace("s", "")
+                    wait_s = (float(hint) / 1000 if "ms" in str(data.get("try_again_in", "")) else float(hint)) if hint.replace(".", "", 1).isdigit() else 1.0
+                    self.throttled += 1
+                    time.sleep(max(wait_s, 0.2) + 0.1)
+                    continue
+                return out
             except urllib.error.HTTPError as e:
                 self._last = time.time()
                 if e.code in (429, 502, 503, 504) and attempt < self.retries - 1:
