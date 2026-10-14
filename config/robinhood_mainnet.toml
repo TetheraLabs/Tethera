@@ -1,0 +1,41 @@
+# Robinhood Chain mainnet (chain ID 4663). Verified 2026-10-14 against
+# Uniswap's deployment docs and the erc-8004 canonical contracts repo,
+# then cross-checked on-chain (pool.factory() calls, live Swap/Registered events).
+
+[chain]
+id = 4663
+rpc = "https://rpc.mainnet.chain.robinhood.com"
+explorer_testnet = "https://explorer.testnet.chain.robinhood.com"
+blocks_per_second = 10
+first_block_2026_07_01 = 653325
+# Public RPC limits: <=10,000 logs per eth_getLogs; topic-only queries <=30,000 blocks.
+
+[erc8004]
+identity_registry = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+reputation_registry = "0x8004BAa17C55a88189AE136b182e5fdA19dE9b63"
+first_registration_block = 34617892   # 2026-08-12
+# event Registered(uint256 indexed agentId, string agentURI, address indexed owner)
+registered_topic = "0xca52e62c367d81bb2e328eb795f7c7ba24afb478408a26c0e201d155c449bc4a"
+# event URIUpdated(uint256 indexed agentId, string newURI, address indexed updatedBy)
+uri_updated_topic = "0x3a2c7fffc2cba7582c690e3b82c453ea02a308326a98a3ad7576c606336409fb"
+
+[uniswap.v2]
+factory = "0x8bceaa40b9acdfaedf85adf4ff01f5ad6517937f"
+router02 = "0x89e5db8b5aa49aa85ac63f691524311aeb649eba"
+swap_topic = "0xd78ad95fa46c994b6551d0da85fc275fe613ce37657fb8d5e3d130840159d822"
+
+[uniswap.v3]
+factory = "0x1f7d7550b1b028f7571e69a784071f0205fd2efa"
+swap_router02 = "0xcaf681a66d020601342297493863e78c959e5cb2"
+universal_router = "0x8876789976decbfcbbbe364623c63652db8c0904"
+swap_topic = "0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67"
+
+[uniswap.v4]
+pool_manager = "0x8366a39cc670b4001a1121b8f6a443a643e40951"
+position_manager = "0x58daec3116aae6d93017baaea7749052e8a04fa7"
+universal_router = "0x8876789976decbfcbbbe364623c63652db8c0904"
+state_view = "0xf3334192d15450cdd385c8b70e03f9a6bd9e673b"
+swap_topic = "0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad7112f"
+
+[tokens]
+weth9 = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
