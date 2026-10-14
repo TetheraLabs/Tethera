@@ -15,7 +15,10 @@ def rows(path):
     with open(path) as f:
         for line in f:
             if line.strip():
-                yield json.loads(line)
+                try:
+                    yield json.loads(line)
+                except json.JSONDecodeError:
+                    continue  # a line still being written by the fetch
 
 with psycopg.connect(DB) as conn, conn.cursor() as cur:
     # agents ---------------------------------------------------------------
@@ -56,7 +59,7 @@ with psycopg.connect(DB) as conn, conn.cursor() as cur:
                 ON CONFLICT (tx_hash, log_index) DO NOTHING
             """, batch)
             batch = []
-    for r in rows("data/swaps.jsonl"):
+    for r in (*rows("data/swaps.jsonl"), *rows("data/swaps_live.jsonl")):
         if r["tx_from"] is None or r["timestamp"] is None:
             continue
         batch.append((r["protocol"], r["pool"], r["block_number"], r["timestamp"], r["tx_hash"], r["log_index"],

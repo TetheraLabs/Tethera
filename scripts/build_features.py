@@ -1,0 +1,124 @@
+"""Compute per-wallet behavioural features from the swaps table and label automated wallets.
+
+Usage: python scripts/build_features.py [--since HOURS]   (default: everything in the table)
+"""
+import os, sys, time, tomllib
+import psycopg
+
+DB = os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")
+cfg = tomllib.load(open(os.path.join(os.path.dirname(__file__), "..", "config", "labels.toml"), "rb"))["signals"]
+since = float(sys.argv[sys.argv.index("--since") + 1]) if "--since" in sys.argv else None
+log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
+
+FEATURES_SQL = """
+WITH s AS (
+    SELECT tx_from AS w, pool, block_number, log_index, block_time, direction,
+           extract(epoch FROM block_time) AS t,
+           CASE WHEN amount0 > 0 THEN amount0 ELSE amount1 END AS amount_in
+    FROM swaps
+    WHERE (%(since)s::timestamptz IS NULL OR block_time >= %(since)s::timestamptz)
+),
+ordered AS (
+    SELECT *, t - lag(t) OVER (PARTITION BY w ORDER BY block_number, log_index) AS gap
+    FROM s
+),
+per_wallet AS (
+    SELECT w, count(*) AS n_swaps, count(DISTINCT pool) AS n_pools,
+           min(block_time) AS first_t, max(block_time) AS last_t,
+           extract(epoch FROM max(block_time) - min(block_time)) AS span_seconds
+    FROM s GROUP BY w
+),
+gapstats AS (
+    SELECT w,
+           percentile_cont(0.5) WITHIN GROUP (ORDER BY gap) AS median_gap,
+           min(gap) AS min_gap, max(gap) AS max_gap,
+           stddev_samp(gap) / nullif(avg(gap), 0) AS gap_cv
+    FROM ordered WHERE gap IS NOT NULL GROUP BY w
+),
+blocks AS (
+    SELECT w,
+           count(*) FILTER (WHERE npools > 1) AS multi_pool_blocks,
+           count(*) FILTER (WHERE nswaps > 1) AS multi_swap_blocks
+    FROM (SELECT w, block_number, count(DISTINCT pool) AS npools, count(*) AS nswaps FROM s GROUP BY 1, 2) b
+    GROUP BY w
+),
+reaction AS (
+    SELECT a.w, count(DISTINCT (a.block_number, a.log_index)) AS reactive_swaps
+    FROM s a
+    WHERE EXISTS (SELECT 1 FROM s b WHERE b.pool = a.pool AND b.w <> a.w
+                  AND b.block_number BETWEEN a.block_number - 2 AND a.block_number - 1)
+    GROUP BY a.w
+),
+roundtrip AS (
+    SELECT w, count(*) AS round_trips FROM (
+        SELECT w, pool, direction, t,
+               lag(direction) OVER (PARTITION BY w, pool ORDER BY block_number, log_index) AS pd,
+               lag(t)         OVER (PARTITION BY w, pool ORDER BY block_number, log_index) AS pt
+        FROM s) x
+    WHERE pd IS NOT NULL AND pd <> direction AND t - pt <= 30
+    GROUP BY w
+),
+sizing AS (
+    SELECT w,
+           avg(CASE WHEN amount_in > 0 AND mod(amount_in, power(10::numeric, greatest(length(amount_in::text) - 3, 0))) = 0 THEN 1.0 ELSE 0.0 END) AS round_amount_frac,
+           1.0 - count(DISTINCT amount_in)::float / count(*) AS repeat_amount_frac
+    FROM s GROUP BY w
+)
+INSERT INTO wallet_features (wallet, window_start, window_end, n_swaps, n_pools, span_seconds,
+    median_gap, min_gap, max_gap, gap_cv, multi_pool_blocks, multi_swap_blocks, reactive_swaps, round_trips,
+    round_amount_frac, repeat_amount_frac, is_registered_agent)
+SELECT p.w, p.first_t, p.last_t, p.n_swaps, p.n_pools, p.span_seconds,
+       g.median_gap, g.min_gap, g.max_gap, g.gap_cv,
+       coalesce(b.multi_pool_blocks, 0), coalesce(b.multi_swap_blocks, 0),
+       coalesce(r.reactive_swaps, 0), coalesce(rt.round_trips, 0),
+       z.round_amount_frac, z.repeat_amount_frac,
+       EXISTS (SELECT 1 FROM agents a WHERE a.agent_wallet = p.w OR a.owner = p.w OR a.current_owner = p.w)
+FROM per_wallet p
+LEFT JOIN gapstats g USING (w) LEFT JOIN blocks b USING (w) LEFT JOIN reaction r USING (w)
+LEFT JOIN roundtrip rt USING (w) LEFT JOIN sizing z USING (w)
+ON CONFLICT (wallet) DO UPDATE SET
+    window_start = EXCLUDED.window_start, window_end = EXCLUDED.window_end, n_swaps = EXCLUDED.n_swaps,
+    n_pools = EXCLUDED.n_pools, span_seconds = EXCLUDED.span_seconds, median_gap = EXCLUDED.median_gap,
+    min_gap = EXCLUDED.min_gap, max_gap = EXCLUDED.max_gap, gap_cv = EXCLUDED.gap_cv,
+    multi_pool_blocks = EXCLUDED.multi_pool_blocks, multi_swap_blocks = EXCLUDED.multi_swap_blocks,
+    reactive_swaps = EXCLUDED.reactive_swaps, round_trips = EXCLUDED.round_trips,
+    round_amount_frac = EXCLUDED.round_amount_frac, repeat_amount_frac = EXCLUDED.repeat_amount_frac,
+    is_registered_agent = EXCLUDED.is_registered_agent, computed_at = now();
+"""
+
+LABEL_SQL = """
+UPDATE wallet_features f SET signals = sig.signals, n_signals = cardinality(sig.signals),
+    is_automated = (f.n_swaps >= %(min_swaps_to_label)s AND cardinality(sig.signals) >= %(min_signals)s)
+FROM (
+    SELECT wallet, array_remove(ARRAY[
+        CASE WHEN multi_pool_blocks >= %(multi_pool_block_min)s THEN 'same_block_multi_pool' END,
+        CASE WHEN min_gap IS NOT NULL AND min_gap <= %(sub_second_gap_max)s THEN 'sub_second_gap' END,
+        CASE WHEN n_swaps >= 10 AND gap_cv IS NOT NULL AND gap_cv < %(metronomic_cv_max)s THEN 'metronomic' END,
+        CASE WHEN round_trips >= %(round_trips_min)s THEN 'fast_round_trips' END,
+        CASE WHEN n_swaps >= 10 AND round_amount_frac < %(computed_sizes_max_round_frac)s THEN 'computed_sizes' END,
+        CASE WHEN n_swaps >= 10 AND reactive_swaps::float / n_swaps >= %(reactive_frac_min)s THEN 'reactive' END,
+        CASE WHEN n_swaps >= 20 AND span_seconds >= 1800 AND max_gap <= %(persistent_max_idle)s THEN 'persistent' END
+    ], NULL) AS signals
+    FROM wallet_features
+) sig WHERE sig.wallet = f.wallet;
+"""
+
+with psycopg.connect(DB) as conn, conn.cursor() as cur:
+    t = time.time()
+    cur.execute("SELECT max(block_time) FROM swaps"); end = cur.fetchone()[0]
+    since_ts = None if since is None or end is None else end - __import__("datetime").timedelta(hours=since)
+    cur.execute(FEATURES_SQL, {"since": since_ts}); n = cur.rowcount
+    conn.commit(); log(f"features computed for {n} wallets in {time.time()-t:.1f}s")
+    cur.execute(LABEL_SQL, cfg); conn.commit()
+    cur.execute("UPDATE swaps s SET is_automated = f.is_automated FROM wallet_features f WHERE s.tx_from = f.wallet AND s.is_automated IS DISTINCT FROM f.is_automated")
+    conn.commit()
+    cur.execute("""SELECT count(*), count(*) FILTER (WHERE is_automated), count(*) FILTER (WHERE n_swaps >= %s),
+                          count(*) FILTER (WHERE is_registered_agent) FROM wallet_features""", (cfg["min_swaps_to_label"],))
+    total, auto, eligible, reg = cur.fetchone()
+    log(f"wallets: {total} seen, {eligible} with enough swaps to judge, {auto} labelled automated, {reg} registered agents")
+    cur.execute("SELECT count(*), count(*) FILTER (WHERE is_automated) FROM swaps"); ts, ta = cur.fetchone()
+    log(f"swaps: {ts} total, {ta} by automated wallets ({ta/max(ts,1):.0%})")
+    cur.execute("SELECT unnest(signals) s, count(*) FROM wallet_features GROUP BY 1 ORDER BY 2 DESC")
+    log("signal counts:", dict(cur.fetchall()))
+    cur.execute("SELECT n_signals, count(*) FROM wallet_features WHERE n_swaps >= %s GROUP BY 1 ORDER BY 1", (cfg["min_swaps_to_label"],))
+    log("signals per judged wallet:", dict(cur.fetchall()))
