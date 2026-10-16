@@ -8,12 +8,38 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
 
 DEFAULT_RPC = "https://rpc.mainnet.chain.robinhood.com"
 HEADERS = {"content-type": "application/json", "user-agent": "tethera/0.1"}
+
+
+class RateLimiter:
+    """Thread-safe token bucket shared by several Rpc instances: at most `rps` requests per second
+    across all of them. Batch sub-requests count individually, as providers bill them."""
+
+    def __init__(self, rps: float, burst: float | None = None, per_item: bool = True):
+        self.rps = float(rps)
+        self.per_item = per_item  # True: batch sub-requests each cost a token (paid providers bill that way)
+        self.capacity = float(burst if burst is not None else max(1.0, rps / 4))
+        self._tokens = self.capacity
+        self._t = time.monotonic()
+        self._lock = threading.Lock()
+
+    def acquire(self, n: int = 1) -> None:
+        while True:
+            with self._lock:
+                now = time.monotonic()
+                self._tokens = min(self.capacity, self._tokens + (now - self._t) * self.rps)
+                self._t = now
+                if self._tokens >= n:
+                    self._tokens -= n
+                    return
+                wait = (n - self._tokens) / self.rps
+            time.sleep(wait)
 
 
 class RpcError(Exception):
@@ -24,18 +50,23 @@ class RpcError(Exception):
 
 
 class Rpc:
-    def __init__(self, url: str | None = None, min_interval: float = 0.25, retries: int = 30):
+    def __init__(self, url: str | None = None, min_interval: float = 0.25, retries: int = 30,
+                 limiter: RateLimiter | None = None):
         self.url = url or os.environ.get("RPC_URL", DEFAULT_RPC)
         self.min_interval = min_interval
         self.retries = retries
+        self.limiter = limiter  # when set, replaces min_interval with a shared budget
         self._last = 0.0
         self.throttled = 0
 
     def _post(self, payload) -> object:
         for attempt in range(self.retries):
-            wait = self.min_interval - (time.time() - self._last)
-            if wait > 0:
-                time.sleep(wait)
+            if self.limiter is not None:
+                self.limiter.acquire(len(payload) if (isinstance(payload, list) and self.limiter.per_item) else 1)
+            else:
+                wait = self.min_interval - (time.time() - self._last)
+                if wait > 0:
+                    time.sleep(wait)
             req = urllib.request.Request(self.url, data=json.dumps(payload).encode(), headers=HEADERS)
             try:
                 with urllib.request.urlopen(req, timeout=120) as resp:
