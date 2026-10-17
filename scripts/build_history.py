@@ -30,7 +30,28 @@ HIST = dict(target="wallet_features_hist",
 SOURCE = """swaps_archive
     WHERE block_number BETWEEN %(lo)s AND %(hi)s AND block_time >= %(week)s::timestamptz AND block_time < %(week_end)s::timestamptz"""
 
-FEATURES_HIST_SQL = (bf.FEATURE_CTES.format(source=SOURCE)
+# The live builder's `reaction` test is an EXISTS self-join that needs the (pool, block_number) index the
+# archive does not have. Over history we use a window-function version: a swap is reactive when any of the
+# three previous swaps in the same pool came from another wallet one or two blocks earlier. Slight undercount
+# in very busy blocks; same meaning.
+REACTION_LIVE = bf.FEATURE_CTES[bf.FEATURE_CTES.index("reaction AS ("):bf.FEATURE_CTES.index("roundtrip AS (")]
+REACTION_HIST = """reaction AS (
+    SELECT w, count(*) AS reactive_swaps FROM (
+        SELECT w, block_number,
+               lag(w, 1) OVER o AS w1, lag(block_number, 1) OVER o AS b1,
+               lag(w, 2) OVER o AS w2, lag(block_number, 2) OVER o AS b2,
+               lag(w, 3) OVER o AS w3, lag(block_number, 3) OVER o AS b3
+        FROM s WINDOW o AS (PARTITION BY pool ORDER BY block_number, log_index)) x
+    WHERE (w1 <> w AND b1 BETWEEN block_number - 2 AND block_number - 1)
+       OR (w2 <> w AND b2 BETWEEN block_number - 2 AND block_number - 1)
+       OR (w3 <> w AND b3 BETWEEN block_number - 2 AND block_number - 1)
+    GROUP BY w
+),
+"""
+assert REACTION_LIVE.startswith("reaction AS (") and REACTION_LIVE.rstrip().endswith(",")
+CTES_HIST = bf.FEATURE_CTES.replace(REACTION_LIVE, REACTION_HIST)
+
+FEATURES_HIST_SQL = (CTES_HIST.format(source=SOURCE)
     + "INSERT INTO wallet_features_hist " + bf.FEATURE_COLS
     + bf.FEATURE_SELECT.format(window="%(week)s::timestamptz, %(week_end)s::timestamptz")
     + " ON CONFLICT (wallet, window_start) DO NOTHING")

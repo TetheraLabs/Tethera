@@ -28,8 +28,27 @@ def classify(symbol, name):
     s = (symbol or "").upper(); n = (name or "").lower()
     if s in ("USDG", "USDC", "USDT", "DAI", "PYUSD", "USDE") or "usd" in n and "stable" in n: return "stable"
     if s in ("WETH", "ETH"): return "eth"
-    if re.search(r"stock|equity|share|tokeni[sz]ed .*(inc|corp|plc)|xstock", n) or re.fullmatch(r"[A-Z]{1,5}X", s) or s.endswith("ON") and "robinhood" in n: return "stock"
+    if is_stock(symbol, name): return "stock"
     return "other"
+
+def is_stock(symbol, name):
+    """Tokenised equities and ETFs: xStocks (symbol like SPYx, AAPLx: upper-case ticker + lower-case x; name '... xStock'),
+    Backpack/Backed securities tokens, and anything calling itself a stock or security. Case matters: MARSX, CNX are not stocks."""
+    sym = symbol or ""; n = (name or "").lower()
+    return bool(re.fullmatch(r"[A-Z]{1,6}x", sym) or re.search(r"xstock|securit(y|ies)|tokeni[sz]ed (stock|share|equity)|\bstock\b|\betf\b", n))
+
+RECLASSIFY = r"""
+UPDATE tokens SET kind = CASE
+    WHEN symbol ~ '^[A-Z]{1,6}x$' OR lower(name) ~ '(xstock|securit(y|ies)|tokeni[sz]ed (stock|share|equity)|\mstock\M|\metf\M)' THEN 'stock'
+    WHEN upper(symbol) IN ('USDG','USDC','USDT','DAI','PYUSD','USDE') THEN 'stable'
+    WHEN upper(symbol) IN ('WETH','ETH') THEN 'eth'
+    ELSE 'other' END
+WHERE kind IS DISTINCT FROM CASE
+    WHEN symbol ~ '^[A-Z]{1,6}x$' OR lower(name) ~ '(xstock|securit(y|ies)|tokeni[sz]ed (stock|share|equity)|\mstock\M|\metf\M)' THEN 'stock'
+    WHEN upper(symbol) IN ('USDG','USDC','USDT','DAI','PYUSD','USDE') THEN 'stable'
+    WHEN upper(symbol) IN ('WETH','ETH') THEN 'eth'
+    ELSE 'other' END;
+"""
 
 with psycopg.connect(os.environ.get("DATABASE_URL", "postgresql://localhost/tethera"), autocommit=True) as conn, conn.cursor() as cur:
     cur.execute("""
@@ -52,5 +71,6 @@ with psycopg.connect(os.environ.get("DATABASE_URL", "postgresql://localhost/teth
         cur.execute("INSERT INTO tokens (token, symbol, name, decimals, kind) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (token) DO NOTHING",
                     (tok, (row.get("symbol") or "")[:64] or None, (row.get("name") or "")[:128] or None, row.get("decimals"), classify(row.get("symbol"), row.get("name"))))
         if i % 100 == 0: log(f"{i}/{len(todo)}")
+    cur.execute(RECLASSIFY); log(f"reclassified {cur.rowcount} tokens")
     cur.execute("SELECT kind, count(*) FROM tokens GROUP BY 1 ORDER BY 2 DESC"); log("kinds:", dict(cur.fetchall()))
     cur.execute("SELECT symbol, name FROM tokens WHERE kind='stock' ORDER BY symbol LIMIT 40"); log("stocks:", cur.fetchall())

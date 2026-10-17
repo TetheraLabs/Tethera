@@ -110,12 +110,12 @@ ON CONFLICT (wallet) DO UPDATE SET
 """)
 
 VOLUME_BOT_SQL = """
-UPDATE {target} SET is_volume_bot =
+UPDATE {target} SET is_volume_bot = coalesce(
     n_swaps >= %(min_swaps)s AND net_flow_frac <= %(net_flow_frac_max)s AND top_pool_share >= %(top_pool_share_min)s
-    AND (active_days < 3 OR daily_volume_cv <= %(daily_volume_cv_max)s)
-WHERE is_volume_bot IS DISTINCT FROM (
+    AND (active_days < 3 OR daily_volume_cv <= %(daily_volume_cv_max)s), false)
+WHERE is_volume_bot IS DISTINCT FROM coalesce(
     n_swaps >= %(min_swaps)s AND net_flow_frac <= %(net_flow_frac_max)s AND top_pool_share >= %(top_pool_share_min)s
-    AND (active_days < 3 OR daily_volume_cv <= %(daily_volume_cv_max)s)) {scope_and};
+    AND (active_days < 3 OR daily_volume_cv <= %(daily_volume_cv_max)s), false) {scope_and};
 """
 
 LIVE = dict(target="wallet_features", scope="", scope_f="", scope_and="")
