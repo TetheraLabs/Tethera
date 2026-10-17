@@ -151,3 +151,60 @@ class Rpc:
 
     def eth_call(self, to: str, data: str, block: str = "latest") -> str:
         return self.call("eth_call", [{"to": to, "data": data}, block])
+
+class FailoverRpc(Rpc):
+    """An Rpc over several endpoints. Requests go to the first healthy endpoint; one that
+    answers 401/403 (quota or key problems) or exhausts its retries is marked down and
+    retried after `cooldown` seconds. Each endpoint keeps its own pacing."""
+
+    def __init__(self, endpoints: list[tuple[str, float]], retries: int = 6, cooldown: float = 600.0):
+        # endpoints: [(url, min_interval_seconds), ...] in order of preference
+        super().__init__(endpoints[0][0], min_interval=endpoints[0][1], retries=retries)
+        self.endpoints = endpoints
+        self.cooldown = cooldown
+        self._down: dict[str, float] = {}       # url -> time it went down
+        self._last_by_url: dict[str, float] = {}
+        self.active = endpoints[0][0]
+
+    def _healthy(self) -> list[tuple[str, float]]:
+        now = time.time()
+        up = [(u, i) for u, i in self.endpoints if now - self._down.get(u, -1e12) > self.cooldown]
+        return up or list(self.endpoints)       # if all are down, try them all anyway
+
+    def _post(self, payload) -> object:
+        last_err: Exception | None = None
+        for url, interval in self._healthy():
+            self.url, self.min_interval = url, interval
+            self._last = self._last_by_url.get(url, 0.0)
+            try:
+                out = super()._post(payload)
+                self._last_by_url[url] = self._last
+                if url != self.active:
+                    print(f"[rpc] switched to {url.split('/')[2]}", flush=True)
+                    self.active = url
+                return out
+            except urllib.error.HTTPError as e:
+                self._last_by_url[url] = self._last
+                last_err = e
+                if e.code in (401, 403, 402, 429, 502, 503, 504):
+                    self._down[url] = time.time()
+                    print(f"[rpc] {url.split('/')[2]} returned HTTP {e.code}; marked down for {self.cooldown:.0f}s", flush=True)
+                    continue
+                raise
+            except (urllib.error.URLError, TimeoutError, ConnectionError) as e:
+                self._last_by_url[url] = self._last
+                last_err = e
+                self._down[url] = time.time()
+                print(f"[rpc] {url.split('/')[2]} unreachable ({type(e).__name__}); marked down for {self.cooldown:.0f}s", flush=True)
+                continue
+        assert last_err is not None
+        raise last_err
+
+
+def live_rpc(retries: int = 6) -> Rpc:
+    """The follower's RPC: the paid endpoint first (if configured), then the public one."""
+    eps: list[tuple[str, float]] = []
+    if os.environ.get("PAID_RPC_URL"):
+        eps.append((os.environ["PAID_RPC_URL"], 0.08))     # ~12 req/s, under the plan's 25 rps cap
+    eps.append((os.environ.get("RPC_URL", DEFAULT_RPC), 0.25))    # public endpoint: gentle
+    return FailoverRpc(eps, retries=retries)

@@ -7,3 +7,11 @@ __pycache__/
 *.log
 data/
 backups/
+
+# local only
+reports/
+notes/
+*.jsonl
+*.local.*
+.DS_Store
+~/

@@ -4,11 +4,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from dotenv import load_dotenv; load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 import psycopg
 from web3 import Web3
-from tethera.rpc import Rpc
+from tethera.rpc import live_rpc
 
 REACTOR = "0x000000007A1C8e570011EeDF86A2A35593013cBA"
 TOPIC_FILL = "0x" + Web3.keccak(text="Fill(bytes32,address,address,uint256)").hex().removeprefix("0x")
-rpc = Rpc(os.environ["PAID_RPC_URL"], min_interval=0.5)
+rpc = live_rpc()
 log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
 MAX_LAG, STEP = 60, 40
 
@@ -19,7 +19,7 @@ with psycopg.connect(os.environ.get("DATABASE_URL", "postgresql://localhost/teth
         try:
             head = rpc.block_number()
             if head - nxt > MAX_LAG:
-                nxt = head - MAX_LAG
+                log(f"GAP {nxt} {head - MAX_LAG - 1}: skipping to head-{MAX_LAG}"); nxt = head - MAX_LAG
             if nxt > head - 2:
                 time.sleep(2); continue
             a, b = nxt, min(nxt + STEP - 1, head - 2)
