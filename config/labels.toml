@@ -11,3 +11,10 @@ computed_sizes_max_round_frac = 0.05   # almost no round-number amounts (needs >
 reactive_frac_min       = 0.5    # share of swaps that follow someone else's in the same pool within 2 blocks (needs >= 10 swaps)
 persistent_max_idle     = 600    # no idle stretch longer than this many seconds, over a span >= 1800 s, >= 20 swaps
 min_signals             = 3
+
+[volume_bots]
+# Paid volume services: one pool, no net position, steady daily budget. First guesses, 2026-10-17; tune on a week.
+min_swaps              = 20
+net_flow_frac_max      = 0.10   # |net token0| / gross token0 summed over pools
+top_pool_share_min     = 0.80   # share of swaps in the busiest pool
+daily_volume_cv_max    = 0.35   # applies when active_days >= 3; below that the first two tests decide

@@ -42,6 +42,10 @@ class RateLimiter:
             time.sleep(wait)
 
 
+class QuotaExhausted(Exception):
+    """The endpoint's plan quota is used up (the paid provider reports it as JSON-RPC error -32005 mentioning 'quota')."""
+
+
 class RpcError(Exception):
     def __init__(self, code: int, message: str):
         super().__init__(f"{code}: {message}")
@@ -74,6 +78,8 @@ class Rpc:
                     out = json.load(resp)
                 items = out if isinstance(out, list) else [out]
                 limited = [o for o in items if isinstance(o, dict) and o.get("error", {}).get("code") == -32005]
+                if limited and "quota" in str(limited[0]["error"].get("message", "")).lower():
+                    raise QuotaExhausted(self.url)        # a monthly cap, not a momentary limit: let the caller fail over
                 if limited and attempt < self.retries - 1:
                     data = limited[0]["error"].get("data") or {}
                     hint = str(data.get("try_again_in", "")).replace("ms", "").replace("s", "")
@@ -183,6 +189,12 @@ class FailoverRpc(Rpc):
                     print(f"[rpc] switched to {url.split('/')[2]}", flush=True)
                     self.active = url
                 return out
+            except QuotaExhausted as e:
+                self._last_by_url[url] = self._last
+                last_err = e
+                self._down[url] = time.time()
+                print(f"[rpc] {url.split('/')[2]} quota exhausted; marked down for {self.cooldown:.0f}s", flush=True)
+                continue
             except urllib.error.HTTPError as e:
                 self._last_by_url[url] = self._last
                 last_err = e

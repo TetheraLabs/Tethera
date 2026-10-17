@@ -6,17 +6,18 @@ import os, sys, time, tomllib
 import psycopg
 
 DB = os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")
-cfg = tomllib.load(open(os.path.join(os.path.dirname(__file__), "..", "config", "labels.toml"), "rb"))["signals"]
+_cfg_all = tomllib.load(open(os.path.join(os.path.dirname(__file__), "..", "config", "labels.toml"), "rb"))
+cfg = _cfg_all["signals"]; vb_cfg = _cfg_all["volume_bots"]
 since = float(sys.argv[sys.argv.index("--since") + 1]) if "--since" in sys.argv else None
 log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
 
-FEATURES_SQL = """
+FEATURE_CTES = """
 WITH s AS (
     SELECT tx_from AS w, pool, block_number, log_index, block_time, direction,
            extract(epoch FROM block_time) AS t,
-           CASE WHEN amount0 > 0 THEN amount0 ELSE amount1 END AS amount_in
-    FROM swaps
-    WHERE (%(since)s::timestamptz IS NULL OR block_time >= %(since)s::timestamptz)
+           CASE WHEN amount0 > 0 THEN amount0 ELSE amount1 END AS amount_in,
+           amount0
+    FROM {source}
 ),
 ordered AS (
     SELECT *, t - lag(t) OVER (PARTITION BY w ORDER BY block_number, log_index) AS gap
@@ -58,24 +59,44 @@ roundtrip AS (
     WHERE pd IS NOT NULL AND pd <> direction AND t - pt <= 30
     GROUP BY w
 ),
+netflow AS (
+    SELECT w, sum(abs(net0))::float / nullif(sum(gross0), 0) AS net_flow_frac,
+           max(cnt)::float / sum(cnt) AS top_pool_share
+    FROM (SELECT w, pool, sum(amount0) AS net0, sum(abs(amount0)) AS gross0, count(*) AS cnt FROM s GROUP BY 1, 2) x
+    GROUP BY w
+),
+daily AS (
+    SELECT w, count(*) AS active_days, stddev_samp(v) / nullif(avg(v), 0) AS daily_volume_cv
+    FROM (SELECT w, date_trunc('day', block_time) AS d, sum(abs(amount0)) AS v FROM s GROUP BY 1, 2) x
+    GROUP BY w
+),
 sizing AS (
     SELECT w,
            avg(CASE WHEN amount_in > 0 AND mod(amount_in, power(10::numeric, greatest(length(amount_in::text) - 3, 0))) = 0 THEN 1.0 ELSE 0.0 END) AS round_amount_frac,
            1.0 - count(DISTINCT amount_in)::float / count(*) AS repeat_amount_frac
     FROM s GROUP BY w
 )
-INSERT INTO wallet_features (wallet, window_start, window_end, n_swaps, n_pools, span_seconds,
+"""
+
+FEATURE_COLS = """(wallet, window_start, window_end, n_swaps, n_pools, span_seconds,
     median_gap, min_gap, max_gap, gap_cv, multi_pool_blocks, multi_swap_blocks, reactive_swaps, round_trips,
-    round_amount_frac, repeat_amount_frac, is_registered_agent)
-SELECT p.w, p.first_t, p.last_t, p.n_swaps, p.n_pools, p.span_seconds,
+    round_amount_frac, repeat_amount_frac, is_registered_agent, net_flow_frac, top_pool_share, active_days, daily_volume_cv)"""
+
+FEATURE_SELECT = """
+SELECT p.w, {window}, p.n_swaps, p.n_pools, p.span_seconds,
        g.median_gap, g.min_gap, g.max_gap, g.gap_cv,
        coalesce(b.multi_pool_blocks, 0), coalesce(b.multi_swap_blocks, 0),
        coalesce(r.reactive_swaps, 0), coalesce(rt.round_trips, 0),
        z.round_amount_frac, z.repeat_amount_frac,
-       EXISTS (SELECT 1 FROM agents a WHERE a.agent_wallet = p.w OR a.owner = p.w OR a.current_owner = p.w)
+       EXISTS (SELECT 1 FROM agents a WHERE a.agent_wallet = p.w OR a.owner = p.w OR a.current_owner = p.w),
+       nf.net_flow_frac, nf.top_pool_share, d.active_days, d.daily_volume_cv
 FROM per_wallet p
 LEFT JOIN gapstats g USING (w) LEFT JOIN blocks b USING (w) LEFT JOIN reaction r USING (w)
-LEFT JOIN roundtrip rt USING (w) LEFT JOIN sizing z USING (w)
+LEFT JOIN roundtrip rt USING (w) LEFT JOIN sizing z USING (w) LEFT JOIN netflow nf USING (w) LEFT JOIN daily d USING (w)
+"""
+
+FEATURES_SQL = (FEATURE_CTES.format(source="swaps WHERE (%(since)s::timestamptz IS NULL OR block_time >= %(since)s::timestamptz)")
+    + "INSERT INTO wallet_features " + FEATURE_COLS + FEATURE_SELECT.format(window="p.first_t, p.last_t") + """
 ON CONFLICT (wallet) DO UPDATE SET
     window_start = EXCLUDED.window_start, window_end = EXCLUDED.window_end, n_swaps = EXCLUDED.n_swaps,
     n_pools = EXCLUDED.n_pools, span_seconds = EXCLUDED.span_seconds, median_gap = EXCLUDED.median_gap,
@@ -83,11 +104,24 @@ ON CONFLICT (wallet) DO UPDATE SET
     multi_pool_blocks = EXCLUDED.multi_pool_blocks, multi_swap_blocks = EXCLUDED.multi_swap_blocks,
     reactive_swaps = EXCLUDED.reactive_swaps, round_trips = EXCLUDED.round_trips,
     round_amount_frac = EXCLUDED.round_amount_frac, repeat_amount_frac = EXCLUDED.repeat_amount_frac,
-    is_registered_agent = EXCLUDED.is_registered_agent, computed_at = now();
+    is_registered_agent = EXCLUDED.is_registered_agent, net_flow_frac = EXCLUDED.net_flow_frac,
+    top_pool_share = EXCLUDED.top_pool_share, active_days = EXCLUDED.active_days, daily_volume_cv = EXCLUDED.daily_volume_cv,
+    computed_at = now();
+""")
+
+VOLUME_BOT_SQL = """
+UPDATE {target} SET is_volume_bot =
+    n_swaps >= %(min_swaps)s AND net_flow_frac <= %(net_flow_frac_max)s AND top_pool_share >= %(top_pool_share_min)s
+    AND (active_days < 3 OR daily_volume_cv <= %(daily_volume_cv_max)s)
+WHERE is_volume_bot IS DISTINCT FROM (
+    n_swaps >= %(min_swaps)s AND net_flow_frac <= %(net_flow_frac_max)s AND top_pool_share >= %(top_pool_share_min)s
+    AND (active_days < 3 OR daily_volume_cv <= %(daily_volume_cv_max)s)) {scope_and};
 """
 
+LIVE = dict(target="wallet_features", scope="", scope_f="", scope_and="")
+
 LABEL_SQL = """
-UPDATE wallet_features f SET signals = sig.signals, n_signals = cardinality(sig.signals),
+UPDATE {target} f SET signals = sig.signals, n_signals = cardinality(sig.signals),
     is_automated = (f.n_swaps >= %(min_swaps_to_label)s AND cardinality(sig.signals) >= %(min_signals)s)
 FROM (
     SELECT wallet, array_remove(ARRAY[
@@ -99,35 +133,43 @@ FROM (
         CASE WHEN n_swaps >= 10 AND reactive_swaps::float / n_swaps >= %(reactive_frac_min)s THEN 'reactive' END,
         CASE WHEN n_swaps >= 20 AND span_seconds >= 1800 AND max_gap <= %(persistent_max_idle)s THEN 'persistent' END
     ], NULL) AS signals
-    FROM wallet_features
-) sig WHERE sig.wallet = f.wallet;
+    FROM {target} {scope}
+) sig WHERE sig.wallet = f.wallet {scope_f};
 """
 
-with psycopg.connect(DB) as conn, conn.cursor() as cur:
-    t = time.time()
-    cur.execute("SELECT max(block_time) FROM swaps"); end = cur.fetchone()[0]
-    since_ts = None if since is None or end is None else end - __import__("datetime").timedelta(hours=since)
-    for attempt in range(5):
-        try:
-            cur.execute(FEATURES_SQL, {"since": since_ts}); n = cur.rowcount
-            conn.commit(); break
-        except psycopg.errors.DeadlockDetected:
-            conn.rollback(); log(f"deadlock, retry {attempt+1}"); time.sleep(5)
-    log(f"features computed for {n} wallets in {time.time()-t:.1f}s")
-    cur.execute(LABEL_SQL, cfg); conn.commit()
-    cur.execute("UPDATE swaps s SET is_automated = f.is_automated FROM wallet_features f WHERE s.tx_from = f.wallet AND s.is_automated IS DISTINCT FROM f.is_automated")
-    conn.commit()
-    cur.execute("""SELECT count(*), count(*) FILTER (WHERE is_automated), count(*) FILTER (WHERE n_swaps >= %s),
-                          count(*) FILTER (WHERE is_registered_agent) FROM wallet_features""", (cfg["min_swaps_to_label"],))
-    total, auto, eligible, reg = cur.fetchone()
-    log(f"wallets: {total} seen, {eligible} with enough swaps to judge, {auto} labelled automated, {reg} registered agents")
-    cur.execute("SELECT count(*), count(*) FILTER (WHERE is_automated) FROM swaps"); ts, ta = cur.fetchone()
-    log(f"swaps: {ts} total, {ta} by automated wallets ({ta/max(ts,1):.0%})")
-    cur.execute("SELECT unnest(signals) s, count(*) FROM wallet_features GROUP BY 1 ORDER BY 2 DESC")
-    log("signal counts:", dict(cur.fetchall()))
-    cur.execute("SELECT n_signals, count(*) FROM wallet_features WHERE n_swaps >= %s GROUP BY 1 ORDER BY 1", (cfg["min_swaps_to_label"],))
-    log("signals per judged wallet:", dict(cur.fetchall()))
+def main():
+  with psycopg.connect(DB) as conn, conn.cursor() as cur:
+      t = time.time()
+      cur.execute("SELECT max(block_time) FROM swaps"); end = cur.fetchone()[0]
+      since_ts = None if since is None or end is None else end - __import__("datetime").timedelta(hours=since)
+      for attempt in range(5):
+          try:
+              cur.execute(FEATURES_SQL, {"since": since_ts}); n = cur.rowcount
+              conn.commit(); break
+          except psycopg.errors.DeadlockDetected:
+              conn.rollback(); log(f"deadlock, retry {attempt+1}"); time.sleep(5)
+      log(f"features computed for {n} wallets in {time.time()-t:.1f}s")
+      cur.execute(LABEL_SQL.format(**LIVE), cfg); conn.commit()
+      cur.execute(VOLUME_BOT_SQL.format(**LIVE), vb_cfg); conn.commit()
+      cur.execute("UPDATE swaps s SET is_automated = f.is_automated FROM wallet_features f WHERE s.tx_from = f.wallet AND s.is_automated IS DISTINCT FROM f.is_automated")
+      conn.commit()
+      cur.execute("""SELECT count(*), count(*) FILTER (WHERE is_automated), count(*) FILTER (WHERE n_swaps >= %s),
+                            count(*) FILTER (WHERE is_registered_agent) FROM wallet_features""", (cfg["min_swaps_to_label"],))
+      total, auto, eligible, reg = cur.fetchone()
+      log(f"wallets: {total} seen, {eligible} with enough swaps to judge, {auto} labelled automated, {reg} registered agents")
+      cur.execute("SELECT count(*), count(*) FILTER (WHERE is_automated), coalesce(sum(n_swaps), 0) FROM wallet_features WHERE is_volume_bot")
+      vb, vb_auto, vb_swaps = cur.fetchone()
+      log(f"volume bots: {vb} wallets ({vb_auto} of them also labelled automated), {vb_swaps} swaps; excluded from herd counts")
+      cur.execute("SELECT count(*), count(*) FILTER (WHERE is_automated) FROM swaps"); ts, ta = cur.fetchone()
+      log(f"swaps: {ts} total, {ta} by automated wallets ({ta/max(ts,1):.0%})")
+      cur.execute("SELECT unnest(signals) s, count(*) FROM wallet_features GROUP BY 1 ORDER BY 2 DESC")
+      log("signal counts:", dict(cur.fetchall()))
+      cur.execute("SELECT n_signals, count(*) FROM wallet_features WHERE n_swaps >= %s GROUP BY 1 ORDER BY 1", (cfg["min_swaps_to_label"],))
+      log("signals per judged wallet:", dict(cur.fetchall()))
 
-    # keep the per-minute aggregates current (last 30 minutes, idempotent)
-    cur.execute("SELECT rollup_pool_minutes(now() - interval '30 minutes', now())"); conn.commit()
-    log(f"pool_minutes rolled up: {cur.fetchone()[0]} rows")
+      # keep the per-minute aggregates current (last 30 minutes, idempotent)
+      cur.execute("SELECT rollup_pool_minutes(now() - interval '30 minutes', now())"); conn.commit()
+      log(f"pool_minutes rolled up: {cur.fetchone()[0]} rows")
+
+if __name__ == "__main__":
+    main()

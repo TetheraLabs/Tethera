@@ -2,6 +2,7 @@
 how one-sided it is, how many pools are moving together, and how unusual that is for this pool.
 
 Reads raw swaps for the live window and pool_minutes for the pool's history.
+Wallets labelled as volume bots (paid volume services) are automated but never count as herd.
 """
 from __future__ import annotations
 
@@ -54,17 +55,20 @@ def crowding(pool: str, direction: str, as_of: datetime | None = None, conn=None
         start = as_of - timedelta(seconds=WINDOW_S)
         opp = "buy0" if direction == "sell0" else "sell0"
         cur.execute("""
-            SELECT count(DISTINCT tx_from) FILTER (WHERE direction = %s AND is_automated),
-                   count(DISTINCT tx_from) FILTER (WHERE direction = %s AND is_automated),
+            SELECT count(DISTINCT tx_from) FILTER (WHERE direction = %s AND herd),
+                   count(DISTINCT tx_from) FILTER (WHERE direction = %s AND herd),
                    count(DISTINCT tx_from) FILTER (WHERE direction = %s),
-                   count(*) FILTER (WHERE direction = %s AND is_automated)
-            FROM swaps WHERE pool = %s AND block_time > %s AND block_time <= %s
+                   count(*) FILTER (WHERE direction = %s AND herd)
+            FROM (SELECT s.*, s.is_automated AND NOT coalesce(f.is_volume_bot, false) AS herd
+                  FROM swaps s LEFT JOIN wallet_features f ON f.wallet = s.tx_from AND f.is_volume_bot
+                  WHERE s.pool = %s AND s.block_time > %s AND s.block_time <= %s) w
         """, (direction, opp, direction, direction, pool, start, as_of))
         same, opposite, all_same, swaps_same = cur.fetchone()
         cur.execute("""
             SELECT count(*) FROM (
-                SELECT pool FROM swaps WHERE direction = %s AND is_automated AND block_time > %s AND block_time <= %s
-                GROUP BY pool HAVING count(DISTINCT tx_from) >= 10) p
+                SELECT s.pool FROM swaps s LEFT JOIN wallet_features f ON f.wallet = s.tx_from AND f.is_volume_bot
+                WHERE s.direction = %s AND s.is_automated AND f.wallet IS NULL AND s.block_time > %s AND s.block_time <= %s
+                GROUP BY s.pool HAVING count(DISTINCT s.tx_from) >= 10) p
         """, (direction, start, as_of))
         pools_same = cur.fetchone()[0]
         cur.execute("""
@@ -91,10 +95,11 @@ def current_herds(min_wallets: int = 15, conn=None) -> list[dict]:
         as_of = cur.fetchone()[0] or datetime.now(timezone.utc)
         cur.execute("""
             WITH w AS (
-              SELECT pool,
-                     count(DISTINCT tx_from) FILTER (WHERE direction='sell0' AND is_automated) AS s,
-                     count(DISTINCT tx_from) FILTER (WHERE direction='buy0'  AND is_automated) AS b
-              FROM swaps WHERE block_time > %s - interval '60 seconds' AND block_time <= %s GROUP BY pool)
+              SELECT s.pool,
+                     count(DISTINCT s.tx_from) FILTER (WHERE s.direction='sell0' AND s.is_automated AND f.wallet IS NULL) AS s,
+                     count(DISTINCT s.tx_from) FILTER (WHERE s.direction='buy0'  AND s.is_automated AND f.wallet IS NULL) AS b
+              FROM swaps s LEFT JOIN wallet_features f ON f.wallet = s.tx_from AND f.is_volume_bot
+              WHERE s.block_time > %s - interval '60 seconds' AND s.block_time <= %s GROUP BY s.pool)
             SELECT pool, CASE WHEN s >= b THEN 'sell0' ELSE 'buy0' END, greatest(s,b), least(s,b)
             FROM w WHERE greatest(s,b) >= %s AND least(s,b) <= 0.15 * greatest(s,b)
             ORDER BY greatest(s,b) DESC
