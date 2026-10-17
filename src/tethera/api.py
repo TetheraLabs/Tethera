@@ -1,19 +1,104 @@
-"""Local HTTP API over the crowding signal. Run: uvicorn tethera.api:app --host 127.0.0.1 --port 8790"""
-import json, os
+"""HTTP API over the crowding signal. Run: uvicorn tethera.api:app --host 127.0.0.1 --port 8790
+
+Paths live under /v1/; the bare paths are kept as aliases. Every path except /health is rate-limited
+with an in-process token bucket: anonymous callers by client address (30 requests a minute, burst 10),
+keyed callers by the X-Tethera-Key header, whose limit comes from the api_keys table (only a sha256
+of each key is stored). Over the limit the answer is 429 with a Retry-After header.
+"""
+import hashlib, json, os, threading, time
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 
 from . import db, signal
 from .rpc import live_rpc
 
 HEALTH_LOG = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "health.jsonl")
+ANON_RPM, ANON_BURST = 30, 10
+KEY_CACHE_S = 60          # how long a key's limit is remembered before the table is read again
+UNLIMITED = {"/health", "/v1/health", "/docs", "/openapi.json", "/redoc"}
 
-app = FastAPI(title="Tethera", version="0.1")
+app = FastAPI(title="Tethera", version="0.2", description="Crowding signal for automated traders on Robinhood Chain.")
 
 
-@app.get("/health")
-def health():
+class Buckets:
+    """Token buckets keyed by client id, one lock, no external store."""
+
+    def __init__(self):
+        self._b: dict[str, list[float]] = {}     # id -> [tokens, last_refill]
+        self._lock = threading.Lock()
+
+    def take(self, cid: str, rpm: float, burst: float) -> float:
+        """Returns 0 when a token was taken, else the seconds until one is available."""
+        rate = rpm / 60.0
+        with self._lock:
+            now = time.monotonic()
+            tokens, last = self._b.get(cid, [burst, now])
+            tokens = min(burst, tokens + (now - last) * rate)
+            if tokens >= 1.0:
+                self._b[cid] = [tokens - 1.0, now]
+                return 0.0
+            self._b[cid] = [tokens, now]
+            return (1.0 - tokens) / rate
+
+    def prune(self, older_than_s: float = 3600):
+        with self._lock:
+            cut = time.monotonic() - older_than_s
+            for k in [k for k, (_, last) in self._b.items() if last < cut]:
+                del self._b[k]
+
+
+buckets = Buckets()
+_keys: dict[str, tuple[float, int | None]] = {}   # key hash -> (checked_at, rpm or None when unknown/disabled)
+_keys_lock = threading.Lock()
+
+
+def key_limit(key: str) -> int | None:
+    h = hashlib.sha256(key.encode()).hexdigest()
+    with _keys_lock:
+        hit = _keys.get(h)
+        if hit and time.monotonic() - hit[0] < KEY_CACHE_S:
+            return hit[1]
+    rpm = None
+    try:
+        with db.connect() as conn:
+            row = conn.execute("SELECT requests_per_minute FROM api_keys WHERE key_hash = %s AND NOT disabled", (h,)).fetchone()
+            rpm = row[0] if row else None
+    except Exception:  # noqa: BLE001  (database down: treat as anonymous rather than fail)
+        rpm = None
+    with _keys_lock:
+        _keys[h] = (time.monotonic(), rpm)
+        if len(_keys) > 10_000:
+            _keys.clear()
+    return rpm
+
+
+@app.middleware("http")
+async def rate_limit(request: Request, call_next):
+    if request.url.path in UNLIMITED:
+        return await call_next(request)
+    key = request.headers.get("x-tethera-key")
+    rpm = key_limit(key) if key else None
+    if rpm:
+        cid, burst = "k:" + hashlib.sha256(key.encode()).hexdigest()[:16], max(10, rpm // 6)
+    else:
+        rpm, burst = ANON_RPM, ANON_BURST
+        fwd = request.headers.get("x-forwarded-for")
+        cid = "a:" + ((fwd.split(",")[0].strip() if fwd else None) or (request.client.host if request.client else "?"))
+    wait = buckets.take(cid, rpm, burst)
+    if wait > 0:
+        retry = max(1, int(wait + 0.999))
+        return JSONResponse({"error": "rate limited", "retry_after_seconds": retry, "limit_per_minute": rpm}, status_code=429,
+                            headers={"Retry-After": str(retry), "X-RateLimit-Limit": str(rpm)})
+    if int(time.monotonic()) % 600 == 0:
+        buckets.prune()
+    resp = await call_next(request)
+    resp.headers["X-RateLimit-Limit"] = str(rpm)
+    return resp
+
+
+def _health():
     with db.connect() as conn:
         row = conn.execute("""SELECT max(block_time), max(block_number), count(*)
                               FROM swaps WHERE block_time > now() - interval '5 minutes'""").fetchone()
@@ -38,14 +123,38 @@ def health():
     return out
 
 
-@app.get("/crowding")
-def crowding(pool: str = Query(..., min_length=42, max_length=66), direction: str = Query(..., pattern="^(sell0|buy0)$")):
+def _crowding(pool: str, direction: str, size: float | None):
     try:
-        return signal.to_dict(signal.crowding(pool, direction))
+        out = signal.to_dict(signal.crowding(pool, direction))
     except Exception as e:  # noqa: BLE001
         raise HTTPException(500, str(e)[:200])
+    out["size"] = size      # accepted now; a later version will say how much of the window this size is
+    return out
 
 
-@app.get("/herds")
-def herds(min_wallets: int = Query(15, ge=5, le=500)):
+def _herds(min_wallets: int):
     return {"herds": signal.current_herds(min_wallets)}
+
+
+POOL = Query(..., min_length=42, max_length=66, description="Pool address (v2/v3) or 32-byte pool id (v4)")
+DIRECTION = Query(..., pattern="^(sell0|buy0)$", description="sell0 = selling token0 into the pool, buy0 = buying token0")
+SIZE = Query(None, gt=0, description="Intended trade size in token0 units (optional; echoed back for now)")
+MIN_WALLETS = Query(15, ge=5, le=500, description="Automated wallets on one side in the last minute")
+
+
+@app.get("/v1/health")
+@app.get("/health", include_in_schema=False)
+def health():
+    return _health()
+
+
+@app.get("/v1/crowding")
+@app.get("/crowding", include_in_schema=False)
+def crowding(pool: str = POOL, direction: str = DIRECTION, size: float | None = SIZE):
+    return _crowding(pool, direction, size)
+
+
+@app.get("/v1/herds")
+@app.get("/herds", include_in_schema=False)
+def herds(min_wallets: int = MIN_WALLETS):
+    return _herds(min_wallets)
