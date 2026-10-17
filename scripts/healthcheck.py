@@ -14,7 +14,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 DB = os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")
 JOBS = ["com.tethera.follow-live", "com.tethera.follow-uniswapx", "com.tethera.follow-uniswapx-orders", "com.tethera.api"]
-MAX_LAG_BLOCKS, MAX_LAG_SECONDS, MIN_DISK_GB, GAP_BLOCKS = 100, 60, 10, 100
+MAX_LAG_BLOCKS, MAX_LAG_SECONDS, MIN_DISK_GB, GAP_BLOCKS = 300, 60, 10, 100
 NOTIFY_EVERY = 3600
 
 

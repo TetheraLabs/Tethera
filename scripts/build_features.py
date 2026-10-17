@@ -105,7 +105,11 @@ ON CONFLICT (wallet) DO UPDATE SET
     reactive_swaps = EXCLUDED.reactive_swaps, round_trips = EXCLUDED.round_trips,
     round_amount_frac = EXCLUDED.round_amount_frac, repeat_amount_frac = EXCLUDED.repeat_amount_frac,
     is_registered_agent = EXCLUDED.is_registered_agent, net_flow_frac = EXCLUDED.net_flow_frac,
-    top_pool_share = EXCLUDED.top_pool_share, active_days = EXCLUDED.active_days, daily_volume_cv = EXCLUDED.daily_volume_cv,
+    top_pool_share = EXCLUDED.top_pool_share,
+    -- the multi-day fields are only trusted from a window of three days or more (the weekly run);
+    -- the ten-minute run keeps whatever the weekly run last said
+    active_days = CASE WHEN EXCLUDED.active_days >= 3 OR wallet_features.active_days IS NULL THEN EXCLUDED.active_days ELSE wallet_features.active_days END,
+    daily_volume_cv = CASE WHEN EXCLUDED.active_days >= 3 OR wallet_features.active_days IS NULL THEN EXCLUDED.daily_volume_cv ELSE wallet_features.daily_volume_cv END,
     computed_at = now();
 """)
 
