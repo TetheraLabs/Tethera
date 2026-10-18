@@ -6,7 +6,7 @@
 <title>How Tethera works · Tethera</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="site.css?v=20261018b">
+<link rel="stylesheet" href="site.css?v=20261018c">
 </head>
 <body>
 <nav class="wrap">
@@ -17,8 +17,8 @@
 <header class="pagehead">
   <div class="wrap">
     <p class="eyebrow">How Tethera works</p>
-    <h1>Watch. Count. Route.</h1>
-    <p class="lede">A live view of every automated wallet on the chain, a one-call signal that says how crowded a trade is right now, and a way to execute that uses the herd instead of fighting it.</p>
+    <h1>Watch. Count. Charge.</h1>
+    <p class="lede">A live view of every automated wallet on the chain, a one-call signal that says how crowded a trade is right now, and a pool that charges the herd for its own impact.</p>
   </div>
 </header>
 <section class="s tight">
@@ -31,9 +31,9 @@
 <section class="s">
   <div class="wrap">
     <div class="steps">
-      <div class="step"><h3>Watch</h3><p>Every Uniswap v2, v3 and v4 swap on Robinhood Chain is decoded within a second of the block. Each wallet is labelled by how it behaves, not by what it claims to be: same-block trades across pools, sub-second gaps, metronomic timing, computed sizes, reaction speed, persistence. Three or more of those and the wallet is automated.</p></div>
+      <div class="step"><h3>Watch</h3><p>Every Uniswap v2, v3 and v4 swap on Robinhood Chain is decoded within a second of the block. Each wallet is labelled by how it behaves, not by what it claims to be: same-block trades across pools, sub-second gaps, metronomic timing, computed sizes, reaction speed, persistence. Three or more of those, over seven days of history, and the wallet is automated. Trades that cancel themselves inside one transaction, both ways in one pool with nothing settled, are flagged and never counted.</p></div>
       <div class="step"><h3>Count</h3><p>For any pool and direction, the signal returns how many automated wallets are on your side of the trade in the last sixty seconds, how many are on the other side, how one-sided the minute is, how many other pools are moving the same way, and where this minute ranks against the pool's own history. One word sums it up: clean, busy, or herd.</p></div>
-      <div class="step"><h3>Route</h3><p>Orders routed through Tethera are matched against the herd before they touch the pool. Opposite flow is netted inside an attested enclave, so the pool only sees the imbalance, and every fill comes with a receipt that proves what happened.</p></div>
+      <div class="step"><h3>Charge</h3><p>A Uniswap v4 hook reads the public set of automated wallets and counts them per pool, per block. When a herd forms, the pool's fee rises for the herd's side and falls for whoever leans against it. Liquidity providers stop paying for the busiest minutes, the herd pays for its own impact, and every surcharged swap is written to the chain as a receipt.</p></div>
     </div>
   </div>
 </section>
@@ -68,7 +68,7 @@
 <section class="s">
   <div class="wrap prose">
     <h2>What we do not do</h2>
-    <p>We do not front-run. The signal describes the last sixty seconds, not the next. The filler fills orders that were already placed, at or better than the price their owners asked for. Everything that runs inside the enclave is published, and the attestation proves the published code is the code that ran.</p>
+    <p>We do not front-run. The signal describes the last sixty seconds, not the next. The hook sets a pool's fee from swaps that have already landed; it never sees an order before the chain does. The automated-wallet set it reads is a public contract, so anyone can audit who is in it, and Tethera's share is a fifth of the surcharge only, capped in the code.</p>
     <p class="next"><a class="btn btn-red" href="products.html">The products</a></p>
   </div>
 </section>

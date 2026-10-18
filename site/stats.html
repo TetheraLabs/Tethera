@@ -6,7 +6,7 @@
 <title>Herd statistics · Tethera</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="site.css?v=20261018b">
+<link rel="stylesheet" href="site.css?v=20261018c">
 </head>
 <body>
 <nav class="wrap">
@@ -18,7 +18,7 @@
   <div class="wrap">
     <p class="eyebrow">Herd statistics</p>
     <h1>Counted every minute. Published every week.</h1>
-    <p class="lede">Numbers straight from the Tethera database on the chain's Uniswap pools. Seven days to 16 October 2026 unless stated.</p>
+    <p class="lede">Numbers straight from the Tethera database on the chain's Uniswap pools. Seven days to 18 October 2026 unless stated. Self-cancelling trades, one transaction swapping both ways in one pool with nothing settled, are excluded throughout.</p>
   </div>
 </header>
 <section class="s tight">
@@ -30,11 +30,11 @@
 </section>
 <div class="band">
   <div class="wrap">
-    <div class="cell"><div class="num">44<small>%</small></div><p class="lab">of swaps placed by automated wallets</p></div>
-    <div class="cell"><div class="num">1,200<small>/day</small></div><p class="lab">one-sided herds: minutes with 15+ automated wallets, four in five on the same side</p></div>
-    <div class="cell"><div class="num">5,100<small>/day</small></div><p class="lab">busy minutes with 15+ automated wallets, most of them two-sided arbitrage</p></div>
+    <div class="cell"><div class="num">43<small>%</small></div><p class="lab">of swaps placed by automated wallets: 11,457 of the 239,185 wallets with enough history to judge</p></div>
+    <div class="cell"><div class="num">1,500<small>/day</small></div><p class="lab">one-sided herds: minutes with 15+ automated wallets and at most 15% of that on the other side</p></div>
+    <div class="cell"><div class="num">6,800<small>/day</small></div><p class="lab">busy minutes with 15+ automated wallets, most of them two-sided arbitrage</p></div>
   </div>
-  <div class="wrap foot mono">14.7 million swaps decoded since 10 October 2026. Labels recomputed every ten minutes.</div>
+  <div class="wrap foot mono">18.5 million swaps decoded since 10 October 2026, 70,350 of them flagged as self-cancelling and $1.0 billion of apparent volume removed with them. Labels judged on seven days of history, recomputed every ten minutes for active wallets. 195 official Robinhood Stock Tokens recognised from Robinhood's registry; 223 tokens marked as copies of a busier one with the same ticker.</div>
 </div>
 <section class="s">
   <div class="wrap">
@@ -43,22 +43,17 @@
       <table class="stats">
         <thead><tr><th>When</th><th>Pool</th><th>Side</th><th class="r">Automated wallets</th><th class="r">All wallets</th></tr></thead>
         <tbody>
-          <tr><td>15 Oct 02:28</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Buying ETH</td><td class="r">475</td><td class="r">696</td></tr>
-          <tr><td>15 Oct 02:24</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Buying ETH</td><td class="r">472</td><td class="r">662</td></tr>
-          <tr><td>15 Oct 14:10</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Selling ETH</td><td class="r">472</td><td class="r">608</td></tr>
-          <tr><td>15 Oct 15:03</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Selling ETH</td><td class="r">402</td><td class="r">488</td></tr>
-          <tr><td>15 Oct 15:04</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Selling ETH</td><td class="r">390</td><td class="r">479</td></tr>
-          <tr><td>14 Oct 17:04</td><td>ETH / USDG <span class="mono dim">v4 · 0x387b…</span></td><td>Selling ETH</td><td class="r">270</td><td class="r">501</td></tr>
+          <tr><td>18 Oct 19:47</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Buying ETH</td><td class="r">171</td><td class="r">251</td></tr><tr><td>15 Oct 12:49</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Buying ETH</td><td class="r">165</td><td class="r">2848</td></tr><tr><td>18 Oct 19:45</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Selling ETH</td><td class="r">129</td><td class="r">198</td></tr><tr><td>16 Oct 18:43</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Selling ETH</td><td class="r">122</td><td class="r">130</td></tr><tr><td>13 Oct 05:23</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Buying ETH</td><td class="r">112</td><td class="r">116</td></tr><tr><td>12 Oct 14:38</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Selling ETH</td><td class="r">111</td><td class="r">126</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="small">The 14 October minute was checked transaction by transaction on the block explorer. The others come from the per-minute aggregates and are re-verified before each weekly report.</p>
+    <p class="small">Herds are counted on the seven-day labels and the per-minute aggregates, and re-verified before each weekly report. The 15 October ETH/Hound minute is a memecoin stampede: 2,848 wallets in sixty seconds, 165 of them software.</p>
   </div>
 </section>
 <section class="s">
   <div class="wrap prose">
     <h2>How these are counted</h2>
-    <p>A wallet is automated when at least three behavioural signals fire across five or more swaps: trades in several pools inside one block, sub-second gaps between trades, metronomic timing, round trips completed within seconds, sizes that are computed rather than chosen, reaction to a price move within one block, and persistence over days. The ERC-8004 agent registry is used to check the labels, not to make them: registered agents barely trade, so a registry alone would miss almost every bot on the chain.</p>
+    <p>A wallet is automated when at least three independent behavioural signals fire across five or more swaps in the last seven days: trades in several pools inside one block, sub-second gaps between trades, metronomic timing, round trips completed within seconds, sizes that are computed rather than chosen, reaction to a price move within one block, and persistence over days. The ERC-8004 agent registry is used to check the labels, not to make them: registered agents barely trade, so a registry alone would miss almost every bot on the chain.</p>
     <p>A busy minute has fifteen or more automated wallets in one pool. A herd is a busy minute where four in five of them are on the same side. Numbers are recomputed every ten minutes and the weekly report fixes them for the record.</p>
     <p class="next"><a class="btn btn-red" href="warning.html">Get the weekly report</a></p>
   </div>
