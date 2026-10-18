@@ -44,9 +44,10 @@ WITH tok AS (
     FROM pl JOIN pool_minutes m ON m.pool = pl.pool AND m.minute >= %(since)s
     GROUP BY 1, 2
 )
-SELECT token, symbol, pools, swaps, first_seen FROM act
-WHERE swaps >= %(min_swaps)s OR upper(symbol) = ANY(%(symbols)s)
-ORDER BY swaps DESC LIMIT %(top)s
+(SELECT token, symbol, pools, swaps, first_seen FROM act WHERE swaps >= %(min_swaps)s ORDER BY swaps DESC LIMIT %(top)s)
+UNION
+(SELECT token, symbol, pools, swaps, first_seen FROM act WHERE upper(symbol) = ANY(%(symbols)s))
+ORDER BY swaps DESC
 """
 
 AUDIT = """
@@ -100,6 +101,7 @@ FROM tot
 def verdict(r):
     swaps, wallets = r["swaps"], r["wallets"]
     if not swaps: return "no activity"
+    new_token = r.get("new_token", False)
     sc = r["sc_swaps"] / swaps
     printed_share = (r["printed_usd"] or 0) / ((r["organic_usd"] or 0) + (r["printed_usd"] or 0)) if (r["organic_usd"] or r["printed_usd"]) else sc
     auto = r["auto_swaps"] / max(swaps - r["sc_swaps"], 1)
@@ -109,8 +111,9 @@ def verdict(r):
     if printed_share >= 0.5: return "printed"
     if auto >= 0.6 and top10 >= 0.5: return "automated, concentrated"
     if auto >= 0.6: return "automated"
+    if new_token and fresh >= 0.8: return "fresh-wallet driven"
     if fresh >= 0.6 and (one >= 0.4 or born >= 0.25): return "fresh-wallet driven"
-    if auto < 0.35 and top10 < 0.3 and fresh < 0.6: return "organic"
+    if auto < 0.35 and top10 < 0.3 and (fresh < 0.6 or not new_token): return "organic"
     return "mixed"
 
 t0 = time.time()
@@ -126,7 +129,8 @@ with psycopg.connect(DB) as conn:
         cols = ["swaps", "wallets", "first_seen", "auto_swaps", "auto_wallets", "sc_swaps", "organic_usd", "printed_usd", "fresh_wallets",
                 "one_swap_wallets", "born_together", "born_bucket", "top10_swaps", "only_bought", "only_sold", "organic_wallets"]
         r = dict(zip(cols, conn.execute(AUDIT, {"token": token, "since": since}).fetchone()))
-        r.update(token=token, symbol=symbol, pools=pools, verdict=verdict(r))
+        r.update(token=token, symbol=symbol, pools=pools, new_token=(r["first_seen"] - since).total_seconds() > 600)
+        r["verdict"] = verdict(r)
         rows.append(r); log(f"{symbol:12} {r['swaps']:>8,} swaps {r['wallets']:>7,} wallets -> {r['verdict']} ({time.time()-t:.0f}s)")
 
 def pct(x, d): return f"{100*x/d:.0f}%" if d else "–"
@@ -139,9 +143,9 @@ L = [f"# Launch audit, {a.days:g} days to {datetime.now(timezone.utc):%Y-%m-%d %
      "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
 for r in rows:
     org = r["swaps"] - r["sc_swaps"]; ow = r["organic_wallets"] or 0
-    L.append(f"| {r['symbol']} | {r['first_seen']:%d %b %H:%M} | {r['pools']} | {r['swaps']:,} | {r['wallets']:,} | {pct(r['auto_swaps'], org)} | {pct(r['auto_wallets'], r['wallets'])} | "
-             f"{pct(r['sc_swaps'], r['swaps'])} | {usd(r['printed_usd'])} | {usd(r['organic_usd'])} | {pct(r['fresh_wallets'], ow)} | {pct(r['one_swap_wallets'], ow)} | "
-             f"{r['born_together'] or 0:,} ({(r['born_bucket'] or r['first_seen']):%d %b %H:%M}) | {pct(r['top10_swaps'], org)} | {pct(r['only_bought'], ow)} / {pct(r['only_sold'], ow)} | **{r['verdict']}** |")
+    L.append(f"| {r['symbol']} | {r['first_seen']:%d %b %H:%M}{'' if r['new_token'] else ' (before window)'} | {r['pools']} | {r['swaps']:,} | {r['wallets']:,} | {pct(r['auto_swaps'], org)} | {pct(r['auto_wallets'], r['wallets'])} | "
+             f"{pct(r['sc_swaps'], r['swaps'])} | {usd(r['printed_usd'])} | {usd(r['organic_usd'])} | {pct(r['fresh_wallets'], ow) if r['new_token'] else 'n/a'} | {pct(r['one_swap_wallets'], ow)} | "
+             f"{(str(r['born_together'] or 0) + ' (' + (r['born_bucket'] or r['first_seen']).strftime('%d %b %H:%M') + ')') if r['new_token'] else 'n/a'} | {pct(r['top10_swaps'], org)} | {pct(r['only_bought'], ow)} / {pct(r['only_sold'], ow)} | **{r['verdict']}** |")
 L += ["", "## Reading the columns", "",
       "- **automated**: the 7-day behavioural label; arbitrage and market-making bots count, so an established pool reads 60%+ and that is normal. On a day-old token it is a sign that bots arrived, not that people did.",
       "- **self-cancelling / printed**: swaps that go both ways in one transaction and settle nothing; the dollar figures need a USDG-quoted pool.",
