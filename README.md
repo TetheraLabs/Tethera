@@ -14,7 +14,7 @@ Everything live runs as a launchd user agent on the machine that hosts the datab
 | `com.tethera.follow-uniswapx` | Records `Fill` events from the UniswapX reactor into `uniswapx_fills` | `follow_uniswapx.log` |
 | `com.tethera.follow-uniswapx-orders` | Polls the UniswapX order feed into `uniswapx_orders` | `follow_uniswapx_orders.log` |
 | `com.tethera.labels` | Every 10 min: wallet features, automated labels, per-minute rollup | `labels.log` |
-| `com.tethera.api` | HTTP API on 127.0.0.1:18790 (`/v1/health`, `/v1/crowding`, `/v1/herds`, `/v1/wallet/{address}`; rate-limited, keys in `api_keys`; see `docs/api.md`) | `api.log` |
+| `com.tethera.api` | HTTP API on 127.0.0.1:18790 (`/v1/health`, `/v1/crowding`, `/v1/herds`, `/v1/pool/{pool}`, `/v1/wallet/{address}`; rate-limited, keys in `api_keys`; see `docs/api.md`) | `api.log` |
 | `com.tethera.healthcheck` | Every 5 min: lag, jobs, gaps, disk; alerts to `alerts.log` and a desktop notification | `healthcheck.log`, `health.jsonl` |
 | `com.tethera.archive` | Nightly 03:00: moves swaps older than 14 days to `swaps_archive` on the external drive | `archive.log` |
 | `com.tethera.backup` | Nightly: Postgres dump to the external drive, 14-day retention | `backup.log` |

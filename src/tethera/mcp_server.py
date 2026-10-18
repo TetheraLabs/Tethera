@@ -51,6 +51,14 @@ def herds(min_wallets: int = 15) -> dict:
 
 
 @mcp.tool()
+def pool(pool: str) -> dict:
+    """Trust profile of one pool over the last 7 days: organic volume, self-cancelling (printed) volume and share,
+    automated share, herd minutes, token kinds (official Robinhood Stock Token or copycat), fee tier and flags.
+    `pool` is the v2/v3 address or the 32-byte v4 pool id."""
+    return _get(f"/v1/pool/{pool}")
+
+
+@mcp.tool()
 def wallet(address: str) -> dict:
     """Behavioural fingerprint of one wallet: what it behaves like, not what it is.
 

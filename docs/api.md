@@ -1,6 +1,6 @@
 # Tethera API
 
-A pre-trade crowding check for automated traders on Robinhood Chain. Three read-only endpoints, JSON, no authentication needed. The same signal is available as an MCP server for agents.
+A pre-trade crowding check for automated traders on Robinhood Chain. Four read-only endpoints, JSON, no authentication needed. The same signal is available as an MCP server for agents.
 
 Base path: `/v1/`. The interactive schema is at `/docs`.
 
@@ -137,6 +137,32 @@ The behavioural fingerprint of one wallet: what it behaves like, not what it is.
 - Venue: `stock_share`, `stable_share`, `other_share` by the pool's tokens, over all swaps; `known_pool_share` says how many swaps were in pools whose tokens are known, so the three shares under-count when it is low.
 - Sizing: `round_amount_frac`, `repeat_amount_frac`; `log_size_median` and `log_size_iqr` are log10 of the trade size in token1 units and are only measured where token1 is a stable coin, else null.
 - Behaviour: `reactive_share` (swaps that follow another wallet's swap in the same pool within two blocks), `round_trips_per_100`, `multi_pool_per_100` (blocks with swaps in more than one pool), `net_flow_frac` (|net| ÷ gross token0, 0 is pure churn).
+
+## GET /v1/pool/{pool}
+
+Trust profile of one pool over the last 7 days: what traded, how much of it was real, and who was there. `pool` is the v2/v3 address or the 32-byte v4 pool id.
+
+```json
+{
+  "pool": "0x52e6…", "protocol": "v3", "fee_tier": 0.01, "hooks": null,
+  "token0": {"symbol": "WETH", "kind": "eth", "official_stock_token": false},
+  "token1": {"symbol": "USDG", "kind": "stable", "official_stock_token": false},
+  "priced_in": "USD",
+  "last_7_days": {"swaps": 1509908, "peak_wallets_in_a_minute": 212, "automated_swap_share": 0.7371,
+                  "organic_volume_usd": 1457381620.1, "self_cancelling_volume_usd": 545203.15,
+                  "self_cancelling_swaps": 5814, "self_cancelling_senders": 414, "self_cancelling_share": 0.0004,
+                  "herd_minutes": 38, "peak_automated_wallets_one_way": 450, "last_swap": "2026-10-18T18:33:30+00:00"},
+  "flags": []
+}
+```
+
+- `kind`: `stable`, `eth`, `stock`, `other`, or `copycat` (a token that shares its symbol with a busier one and is not it). `official_stock_token` is true only for contracts in Robinhood's own Stock Token registry.
+- `priced_in` is `USD` when one side is a stablecoin; otherwise the volume fields are null and only counts are returned.
+- `organic_volume_usd` excludes self-cancelling swaps: one transaction swapping both ways in one pool with both amounts netting to under 1% of gross, which settles nothing under v4 flash accounting. `self_cancelling_volume_usd` is that excluded volume, `self_cancelling_share` its share of the gross.
+- `swaps` and `automated_swap_share` count organic swaps only. `peak_wallets_in_a_minute`: most distinct wallets seen in any one minute (a 7-day distinct count would need a full scan of the pool's swaps).
+- `herd_minutes`: minutes with 15+ automated wallets one way and at most 15% of that the other way. `peak_automated_wallets_one_way`: the busiest such minute.
+- `flags`: `zero_fee`, `dynamic_fee`, `quotes_copycat_token`, `mostly_self_cancelling` (over half the swaps), `single_sender_printing` (one or two senders account for over half the volume through self-cancelling trips).
+- 404 for a pool we have never seen.
 
 ## GET /v1/health
 

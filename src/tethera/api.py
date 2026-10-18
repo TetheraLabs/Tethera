@@ -19,7 +19,7 @@ ANON_RPM, ANON_BURST = 30, 10
 KEY_CACHE_S = 60          # how long a key's limit is remembered before the table is read again
 UNLIMITED = {"/health", "/v1/health", "/docs", "/openapi.json", "/redoc"}
 
-app = FastAPI(title="Tethera", version="0.3", description="Crowding signal for automated traders on Robinhood Chain.")
+app = FastAPI(title="Tethera", version="0.4", description="Crowding signal for automated traders on Robinhood Chain.")
 
 
 class Buckets:
@@ -166,6 +166,61 @@ def _wallet(address: str):
             **{k: (round(v, 4) if isinstance(v, float) else v) for k, v in zip(FINGERPRINT_NUMBERS, nums)}}
 
 
+
+def _pool(pool: str):
+    """Trust profile of one pool over the last 7 days: what traded, what of it was real, who was there."""
+    with db.connect() as conn:
+        meta = conn.execute("""
+            SELECT p.pool, p.protocol, p.fee, p.hooks, p.created_block,
+                   t0.symbol, t0.kind, t0.official, t0.decimals, t1.symbol, t1.kind, t1.official, t1.decimals
+            FROM pools p LEFT JOIN tokens t0 ON t0.token = p.token0 LEFT JOIN tokens t1 ON t1.token = p.token1
+            WHERE lower(p.pool) = %s""", (pool.lower(),)).fetchone()
+        if not meta:
+            return None
+        pool_id, protocol, fee, hooks, created, s0, k0, o0, d0, s1, k1, o1, d1 = meta
+        stable_side = 0 if k0 == "stable" else 1 if k1 == "stable" else None
+        dec = (d0 if stable_side == 0 else d1) if stable_side is not None else None
+        amt = "amount0" if stable_side == 0 else "amount1"
+        usd = f"abs({amt}) / power(10, {dec})" if stable_side is not None and dec is not None else "NULL::numeric"
+        # organic activity from the per-minute aggregates (which already exclude self-cancelling swaps);
+        # the printed part from the partial index on flagged swaps; distinct wallets would need a scan, so it is per-minute here
+        amt_col = "amount0_in" if stable_side == 0 else "amount1_in"
+        usd_m = f"{amt_col} / power(10, {dec})" if stable_side is not None and dec is not None else "NULL::numeric"
+        org = conn.execute(f"""
+            SELECT coalesce(sum(swaps), 0), coalesce(sum(auto_swaps), 0), sum({usd_m}), max(wallets), max(minute)
+            FROM pool_minutes WHERE pool = %s AND minute > now() - interval '7 days'""", (pool_id,)).fetchone()
+        n, auto_n, organic_usd, peak_wallets_minute, last = org
+        sc = conn.execute(f"""
+            SELECT count(*), count(DISTINCT tx_from), sum({usd})
+            FROM swaps WHERE pool = %s AND block_time > now() - interval '7 days' AND self_cancel""", (pool_id,)).fetchone()
+        sc_n, sc_w, printed_usd = sc
+        wallets = None
+        herd = conn.execute("""
+            WITH m AS (SELECT minute, direction, auto_wallets AS same,
+                              coalesce((SELECT o.auto_wallets FROM pool_minutes o WHERE o.pool = pm.pool AND o.minute = pm.minute AND o.direction <> pm.direction), 0) AS opp
+                       FROM pool_minutes pm WHERE pool = %s AND minute > now() - interval '7 days' AND auto_wallets >= 15)
+            SELECT count(*) FILTER (WHERE opp <= 0.15 * same), max(same) FROM m""", (pool_id,)).fetchone()
+    utc = lambda t: t.astimezone(timezone.utc).isoformat(timespec="seconds") if t else None
+    tok = lambda sym, kind, off: {"symbol": sym, "kind": kind or "unknown", "official_stock_token": bool(off)}
+    printed_share = (float(printed_usd or 0) / float((organic_usd or 0) + (printed_usd or 0))) if (organic_usd or printed_usd) else (sc_n / n if n else 0.0)
+    flags = []
+    if fee == 0: flags.append("zero_fee")
+    if fee == 8388608: flags.append("dynamic_fee")
+    if "copycat" in (k0, k1): flags.append("quotes_copycat_token")
+    if sc_n and (sc_n + n) and sc_n / (sc_n + n) >= 0.5: flags.append("mostly_self_cancelling")
+    if sc_w and sc_w <= 2 and printed_share >= 0.5: flags.append("single_sender_printing")
+    return {"pool": pool_id, "protocol": protocol, "fee_tier": None if fee is None else ("dynamic" if fee == 8388608 else fee / 1e4),
+            "hooks": hooks if hooks and int(hooks, 16) != 0 else None, "created_block": created,
+            "token0": tok(s0, k0, o0), "token1": tok(s1, k1, o1), "priced_in": "USD" if stable_side is not None and dec is not None else None,
+            "last_7_days": {"swaps": n, "peak_wallets_in_a_minute": peak_wallets_minute, "automated_swap_share": round(auto_n / n, 4) if n else None,
+                            "organic_volume_usd": round(float(organic_usd), 2) if organic_usd is not None else None,
+                            "self_cancelling_volume_usd": round(float(printed_usd), 2) if printed_usd is not None else None,
+                            "self_cancelling_swaps": sc_n, "self_cancelling_senders": sc_w, "self_cancelling_share": round(printed_share, 4),
+                            "herd_minutes": herd[0] or 0, "peak_automated_wallets_one_way": herd[1],
+                            "last_swap": utc(last)},
+            "flags": flags,
+            "note": "Volumes exclude self-cancelling swaps (one transaction, both ways, nothing settled) unless named as such; see docs/api.md."}
+
 POOL = Query(..., min_length=42, max_length=66, description="Pool address (v2/v3) or 32-byte pool id (v4)")
 DIRECTION = Query(..., pattern="^(sell0|buy0)$", description="sell0 = selling token0 into the pool, buy0 = buying token0")
 SIZE = Query(None, gt=0, description="Intended trade size in token0 units (optional; echoed back for now)")
@@ -195,4 +250,14 @@ def wallet(address: str = Path(..., min_length=42, max_length=42, pattern="^0x[0
     out = _wallet(address)
     if out is None:
         raise HTTPException(404, "no fingerprint for this wallet: not labelled automated or registered, or too few swaps in the window")
+    return out
+
+POOL_PATH = Path(..., min_length=42, max_length=66, pattern="^0x[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$", description="Pool address (v2/v3) or 32-byte pool id (v4)")
+
+
+@app.get("/v1/pool/{pool}")
+def pool_profile(pool: str = POOL_PATH):
+    out = _pool(pool)
+    if out is None:
+        raise HTTPException(status_code=404, detail="unknown pool")
     return out
