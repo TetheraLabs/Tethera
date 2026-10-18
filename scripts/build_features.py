@@ -123,7 +123,7 @@ WINDOW_REACTION_FROM_HOURS = 24   # windows this long or longer use the window f
 
 def features_sql(ctes):
   return (ctes.format(source="""swaps WHERE NOT self_cancel AND (%(since)s::timestamptz IS NULL OR block_time >= %(since)s::timestamptz)
-      AND (%(active)s::int IS NULL OR tx_from IN (SELECT DISTINCT tx_from FROM swaps WHERE block_time > now() - make_interval(mins => %(active)s)))""")
+      AND (%(wallets)s::text[] IS NULL OR tx_from = ANY(%(wallets)s::text[]))""")
     + "INSERT INTO wallet_features " + FEATURE_COLS + FEATURE_SELECT.format(window="p.first_t, p.last_t") + """
 ON CONFLICT (wallet) DO UPDATE SET
     window_start = EXCLUDED.window_start, window_end = EXCLUDED.window_end, n_swaps = EXCLUDED.n_swaps,
@@ -141,8 +141,20 @@ ON CONFLICT (wallet) DO UPDATE SET
     computed_at = now();
 """)
 
+# Incremental runs judge a subset of wallets, so "another wallet's swap in the same pool" has to be looked up in the
+# whole table, not in the subset; one (pool, block_number) index probe per swap of the wallets being judged.
+REACTION_LIVE = """reaction AS (
+    SELECT a.w, count(*) AS reactive_swaps
+    FROM s a
+    CROSS JOIN LATERAL (SELECT 1 FROM swaps b WHERE b.pool = a.pool AND b.block_number BETWEEN a.block_number - 2 AND a.block_number - 1
+                        AND b.tx_from <> a.w AND NOT b.self_cancel LIMIT 1) hit
+    GROUP BY a.w
+),
+"""
+FEATURE_CTES_LIVE = FEATURE_CTES.replace(REACTION_EXISTS, REACTION_LIVE)
 FEATURES_SQL = features_sql(FEATURE_CTES)
 FEATURES_SQL_WINDOW = features_sql(FEATURE_CTES_WINDOW)
+FEATURES_SQL_LIVE = features_sql(FEATURE_CTES_LIVE)
 
 VOLUME_BOT_SQL = """
 UPDATE {target} SET is_volume_bot = coalesce(
@@ -192,11 +204,16 @@ def main():
           log(f"self-cancelling flags changed on {cur.fetchone()[0]} swaps")
       for attempt in range(5):
           try:
-              cur.execute(FEATURES_SQL if since is not None and since < WINDOW_REACTION_FROM_HOURS else FEATURES_SQL_WINDOW, {"since": since_ts, "active": active_minutes}); n = cur.rowcount
+              wallets = None
+              if active_minutes is not None:
+                  cur.execute("SELECT array_agg(DISTINCT tx_from) FROM swaps WHERE block_time > now() - make_interval(mins => %s)", (active_minutes,))
+                  wallets = cur.fetchone()[0] or []
+              sql = FEATURES_SQL_LIVE if active_minutes is not None else FEATURES_SQL if since is not None and since < WINDOW_REACTION_FROM_HOURS else FEATURES_SQL_WINDOW
+              cur.execute(sql, {"since": since_ts, "wallets": wallets}); n = cur.rowcount
               conn.commit(); break
           except psycopg.errors.DeadlockDetected:
               conn.rollback(); log(f"deadlock, retry {attempt+1}"); time.sleep(5)
-      log(f"features computed for {n} wallets in {time.time()-t:.1f}s ({'exists' if since is not None and since < WINDOW_REACTION_FROM_HOURS else 'window'} reaction, active={active_minutes}, since={since})")
+      log(f"features computed for {n} wallets in {time.time()-t:.1f}s ({'live' if active_minutes is not None else 'exists' if since is not None and since < WINDOW_REACTION_FROM_HOURS else 'window'} reaction, active={active_minutes}, since={since})")
       # the labelling statements collide with a concurrent run (the weekly and the ten-minute job overlap on Sundays)
       for attempt in range(5):
           try:
