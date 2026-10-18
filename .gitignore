@@ -19,3 +19,7 @@ bin/
 .cfhome/
 .cloudflared/
 .b2_account
+contracts/out/
+contracts/cache/
+contracts/lib/
+contracts/broadcast/
