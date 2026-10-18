@@ -1,6 +1,10 @@
 """Compute per-wallet behavioural features from the swaps table and label automated wallets.
 
-Usage: python scripts/build_features.py [--since HOURS]   (default: everything in the table)
+Usage: python scripts/build_features.py [--since HOURS] [--active-minutes M]   (default: everything in the table)
+
+--since sets the window every wallet is judged on. --active-minutes restricts the run to wallets that swapped in the
+last M minutes, so the ten-minute job can judge a few thousand wallets on the same 7-day window as the weekly job
+instead of judging 60k wallets on six hours (which made labels flip with the clock; changed 18 Oct 2026).
 """
 import os, sys, time, tomllib
 import psycopg
@@ -9,6 +13,7 @@ DB = os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")
 _cfg_all = tomllib.load(open(os.path.join(os.path.dirname(__file__), "..", "config", "labels.toml"), "rb"))
 cfg = _cfg_all["signals"]; vb_cfg = _cfg_all["volume_bots"]
 since = float(sys.argv[sys.argv.index("--since") + 1]) if "--since" in sys.argv else None
+active_minutes = int(sys.argv[sys.argv.index("--active-minutes") + 1]) if "--active-minutes" in sys.argv else None
 log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
 
 FEATURE_CTES = """
@@ -117,7 +122,8 @@ FEATURE_CTES_WINDOW = FEATURE_CTES.replace(REACTION_EXISTS, REACTION_WINDOW)
 WINDOW_REACTION_FROM_HOURS = 24   # windows this long or longer use the window form
 
 def features_sql(ctes):
-  return (ctes.format(source="swaps WHERE NOT self_cancel AND (%(since)s::timestamptz IS NULL OR block_time >= %(since)s::timestamptz)")
+  return (ctes.format(source="""swaps WHERE NOT self_cancel AND (%(since)s::timestamptz IS NULL OR block_time >= %(since)s::timestamptz)
+      AND (%(active)s::int IS NULL OR tx_from IN (SELECT DISTINCT tx_from FROM swaps WHERE block_time > now() - make_interval(mins => %(active)s)))""")
     + "INSERT INTO wallet_features " + FEATURE_COLS + FEATURE_SELECT.format(window="p.first_t, p.last_t") + """
 ON CONFLICT (wallet) DO UPDATE SET
     window_start = EXCLUDED.window_start, window_end = EXCLUDED.window_end, n_swaps = EXCLUDED.n_swaps,
@@ -177,18 +183,20 @@ def main():
       cur.execute("SELECT max(block_time) FROM swaps"); end = cur.fetchone()[0]
       since_ts = None if since is None or end is None else end - __import__("datetime").timedelta(hours=since)
       # self-cancelling swaps (one tx, one pool, both ways, nothing settled) are flagged first and ignored by everything below
-      cur.execute("SELECT min(block_number), max(block_number) FROM swaps WHERE %(s)s::timestamptz IS NULL OR block_time >= %(s)s::timestamptz", {"s": since_ts})
+      # (the follower flags each chunk as it lands; this is the safety net, kept to a short window when the run is incremental)
+      flag_from = since_ts if active_minutes is None else (end - __import__("datetime").timedelta(minutes=max(2 * active_minutes, 60)) if end else None)
+      cur.execute("SELECT min(block_number), max(block_number) FROM swaps WHERE %(s)s::timestamptz IS NULL OR block_time >= %(s)s::timestamptz", {"s": flag_from})
       lo, hi = cur.fetchone()
       if lo is not None:
           cur.execute("SELECT flag_self_cancelling('swaps', %s, %s)", (lo, hi)); conn.commit()
           log(f"self-cancelling flags changed on {cur.fetchone()[0]} swaps")
       for attempt in range(5):
           try:
-              cur.execute(FEATURES_SQL if since is not None and since < WINDOW_REACTION_FROM_HOURS else FEATURES_SQL_WINDOW, {"since": since_ts}); n = cur.rowcount
+              cur.execute(FEATURES_SQL if since is not None and since < WINDOW_REACTION_FROM_HOURS else FEATURES_SQL_WINDOW, {"since": since_ts, "active": active_minutes}); n = cur.rowcount
               conn.commit(); break
           except psycopg.errors.DeadlockDetected:
               conn.rollback(); log(f"deadlock, retry {attempt+1}"); time.sleep(5)
-      log(f"features computed for {n} wallets in {time.time()-t:.1f}s ({'exists' if since is not None and since < WINDOW_REACTION_FROM_HOURS else 'window'} reaction, since={since})")
+      log(f"features computed for {n} wallets in {time.time()-t:.1f}s ({'exists' if since is not None and since < WINDOW_REACTION_FROM_HOURS else 'window'} reaction, active={active_minutes}, since={since})")
       # the labelling statements collide with a concurrent run (the weekly and the ten-minute job overlap on Sundays)
       for attempt in range(5):
           try:
