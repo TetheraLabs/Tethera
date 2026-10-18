@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Products · Tethera</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<nav class="wrap">
+  <a class="wordmark" href="index.html"><img class="mark" src="logo-dark.png" alt="" width="695" height="530">Tethera</a>
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
+  <ul><li><a href="herding.html">What is herding?</a></li><li><a href="why.html">Why it matters</a></li><li><a href="how.html">How it works</a></li><li><a href="products.html" aria-current=page>Products</a></li><li><a href="stats.html">Stats</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="about.html">About</a></li></ul>
+</nav>
+<header class="pagehead">
+  <div class="wrap">
+    <p class="eyebrow">Products</p>
+    <h1>Built where the money moves.</h1>
+    <p class="lede">Tethera sits inside the trade rather than beside it. Every product earns from the value it creates in the flow, and the crowding data that powers them is free.</p>
+  </div>
+</header>
+<section class="s tight">
+  <div class="wrap">
+    <figure class="plate ">
+  <div class="plate-art" aria-hidden="true"><span class="plate-mark"></span></div>
+</figure>
+  </div>
+</section>
+<section class="s">
+  <div class="wrap">
+    <div class="products">
+      <div class="prod flag">
+        <div class="tag"><span>01 · Herd netting</span><b>Launch product</b></div>
+        <h3>A crowding-aware filler for UniswapX orders.</h3>
+        <p>Dutch orders on Robinhood Chain are filled by Tethera's filler, which knows what the herd is doing before it quotes. Opposite flow is netted in an attested enclave and the pool only sees the remainder. Better fills, verifiable receipts, no change to how you place orders. Tethera earns a share of the improvement it delivers, and nothing when it delivers none.</p>
+      </div>
+      <div class="prod">
+        <div class="tag"><span>02 · Hook</span><b>Next</b></div>
+        <h3>Crowding-aware Uniswap v4 pool</h3>
+        <p>A hook that reads the live signal and adjusts fees as the herd arrives, protecting liquidity providers and the traders who are not in it. Launches after the first mainnet fill.</p>
+      </div>
+      <div class="prod">
+        <div class="tag"><span>03 · Underwriting</span><b>Later</b></div>
+        <h3>Risk data for agent lenders</h3>
+        <p>Behavioural wallet histories that let lenders price credit to autonomous agents, with Tethera taking a share of the risk alongside them.</p>
+      </div>
+      <div class="prod">
+        <div class="tag"><span>04 · Insurance</span><b>Later</b></div>
+        <h3>Cover against crowding losses</h3>
+        <p>Pay a small premium, be made whole when a herd moves the price against your fill beyond an agreed bound.</p>
+      </div>
+      <div class="prod">
+        <div class="tag"><span>Free · Inputs</span><b>Always</b></div>
+        <h3>Signal API, toxicity feed, wallet intelligence</h3>
+        <p>The data underneath the products is published free. It makes the market smarter and the products more valuable.</p>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="s">
+  <div class="wrap">
+    <div class="head"><div><p class="eyebrow">Built on herd netting</p><h2>Things the filler makes possible.</h2></div><p class="lead">Once orders flow through an engine that can see the herd, a set of smaller products falls out of it.</p></div>
+    <ul class="list2">
+      <li><b>Trade through Tethera.</b> An SDK and an MCP server so any agent can route an order with one call.</li>
+      <li><b>Fill receipts.</b> A signed statement of the herd state at fill time and the improvement delivered.</li>
+      <li><b>Protected launches.</b> New tokens list with herd-aware fills from the first block.</li>
+      <li><b>Wait for calm.</b> An order type that executes only when the pool's verdict is clean.</li>
+      <li><b>Herd alerts.</b> A push when a pool you hold starts to herd.</li>
+      <li><b>Crowd-aware slicing.</b> Large orders broken up around the herd rather than into it.</li>
+      <li><b>Crowding-cost statements.</b> What herding cost a wallet this month, and what netting saved it.</li>
+      <li><b>Netted-fill reputation.</b> A public record of wallets that trade through the gate.</li>
+    </ul>
+  </div>
+</section>
+<footer>
+  <div class="wrap">
+    <span>Tethera Labs · Robinhood Chain · <a href="https://github.com/TetheraLabs/Tethera">github.com/TetheraLabs</a></span>
+    <span>Illustrations: Tethera Labs, 2026</span>
+  </div>
+</footer>
+<script>
+(function(){
+  var m=document.querySelector('nav .menu'),u=document.querySelector('nav ul');
+  if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)})}
+  var HAS_AUDIO=false;
+  var sb=document.getElementById('sound');
+  if(sb&&HAS_AUDIO){
+    sb.hidden=false;
+    var wind=new Audio('wind.mp3'),sheep=new Audio('sheep.mp3'),bark=new Audio('bark.mp3');
+    wind.loop=true;sheep.loop=true;wind.volume=0;sheep.volume=0;bark.volume=.28;
+    var on=false,timer=null;
+    function fade(el,to,ms){var from=el.volume,t0=Date.now();(function step(){var k=Math.min(1,(Date.now()-t0)/ms);el.volume=from+(to-from)*k;if(k<1)requestAnimationFrame(step);else if(to===0)el.pause()})()}
+    function schedBark(){timer=setTimeout(function(){if(on){bark.currentTime=0;bark.play().catch(function(){})}schedBark()},25000+Math.random()*35000)}
+    sb.addEventListener('click',function(){
+      on=!on;sb.classList.toggle('on',on);sb.setAttribute('aria-pressed',on);
+      if(on){wind.play().catch(function(){});sheep.play().catch(function(){});fade(wind,.35,1800);fade(sheep,.22,2600);schedBark()}
+      else{fade(wind,0,900);fade(sheep,0,900);clearTimeout(timer)}
+    });
+  }
+  var b=document.getElementById('copy'),a=document.getElementById('addr');
+  if(b&&a){b.addEventListener('click',function(){
+    var t=a.textContent.trim(),done=function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1600)};
+    function sel(){try{var r=document.createRange();r.selectNodeContents(a);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected';setTimeout(function(){b.textContent='Copy'},1600)}catch(e){}}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,sel)}else{sel()}
+  })}
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shepherd's Warning · Tethera</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<nav class="wrap">
+  <a class="wordmark" href="index.html"><img class="mark" src="logo-dark.png" alt="" width="695" height="530">Tethera</a>
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
+  <ul><li><a href="herding.html">What is herding?</a></li><li><a href="why.html">Why it matters</a></li><li><a href="how.html">How it works</a></li><li><a href="products.html">Products</a></li><li><a href="stats.html">Stats</a></li><li><a href="warning.html" aria-current=page>Shepherd's Warning</a></li><li><a href="about.html">About</a></li></ul>
+</nav>
+<header class="pagehead">
+  <div class="wrap">
+    <p class="eyebrow">Shepherd's Warning</p>
+    <h1>A free weekly report on where the herd ran.</h1>
+    <p class="lede">Red sky in the morning. Every week we publish where the herds formed on Robinhood Chain, how long they lasted, and what they cost.</p>
+  </div>
+</header>
+<section class="s tight">
+  <div class="wrap">
+    <figure class="plate ">
+  <div class="plate-art" aria-hidden="true"><span class="plate-mark"></span></div>
+</figure>
+  </div>
+</section>
+<section class="s">
+  <div class="wrap inner2">
+    <div class="prose">
+      <h2>What's in an issue</h2>
+      <ul>
+        <li>The ten most crowded minutes of the week, with the pools and sides.</li>
+        <li>Which pools herded most, and which stayed calm all week.</li>
+        <li>How long herds lasted, and how many persisted past a minute.</li>
+        <li>An estimate of what herding cost the agents inside it.</li>
+        <li>One thing we learned about how agents behave on the chain.</li>
+      </ul>
+      <p>Plain language, real numbers, no sign-up wall. The first issue goes out the week of 21 October 2026. Past issues will be listed here.</p>
+    </div>
+    <div class="addr">
+      <code id="addr">TetheraLabs@proton.me</code>
+      <button id="copy" type="button">Copy</button>
+      <span class="note">Send a blank email to be told when the first issue goes out.</span>
+    </div>
+  </div>
+</section>
+<footer>
+  <div class="wrap">
+    <span>Tethera Labs · Robinhood Chain · <a href="https://github.com/TetheraLabs/Tethera">github.com/TetheraLabs</a></span>
+    <span>Illustrations: Tethera Labs, 2026</span>
+  </div>
+</footer>
+<script>
+(function(){
+  var m=document.querySelector('nav .menu'),u=document.querySelector('nav ul');
+  if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)})}
+  var HAS_AUDIO=false;
+  var sb=document.getElementById('sound');
+  if(sb&&HAS_AUDIO){
+    sb.hidden=false;
+    var wind=new Audio('wind.mp3'),sheep=new Audio('sheep.mp3'),bark=new Audio('bark.mp3');
+    wind.loop=true;sheep.loop=true;wind.volume=0;sheep.volume=0;bark.volume=.28;
+    var on=false,timer=null;
+    function fade(el,to,ms){var from=el.volume,t0=Date.now();(function step(){var k=Math.min(1,(Date.now()-t0)/ms);el.volume=from+(to-from)*k;if(k<1)requestAnimationFrame(step);else if(to===0)el.pause()})()}
+    function schedBark(){timer=setTimeout(function(){if(on){bark.currentTime=0;bark.play().catch(function(){})}schedBark()},25000+Math.random()*35000)}
+    sb.addEventListener('click',function(){
+      on=!on;sb.classList.toggle('on',on);sb.setAttribute('aria-pressed',on);
+      if(on){wind.play().catch(function(){});sheep.play().catch(function(){});fade(wind,.35,1800);fade(sheep,.22,2600);schedBark()}
+      else{fade(wind,0,900);fade(sheep,0,900);clearTimeout(timer)}
+    });
+  }
+  var b=document.getElementById('copy'),a=document.getElementById('addr');
+  if(b&&a){b.addEventListener('click',function(){
+    var t=a.textContent.trim(),done=function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1600)};
+    function sel(){try{var r=document.createRange();r.selectNodeContents(a);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected';setTimeout(function(){b.textContent='Copy'},1600)}catch(e){}}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,sel)}else{sel()}
+  })}
+})();
+</script>
+</body>
+</html>

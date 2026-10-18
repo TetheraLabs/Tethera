@@ -1,413 +1,98 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Tethera</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<style>
-/* Layout: a fell-side page. Content runs down the left; the collie and flock stay on the right and change pose as each section passes. */
-:root {
-  --fleece: #e8eae6;        /* Herdwick fleece, cool grey-white */
-  --fleece-2: #dcdfda;      /* darker fleece for panels */
-  --slate: #232b31;         /* wet Cumbrian slate, text and the dark band */
-  --slate-2: #3a444c;       /* secondary text */
-  --raddle: #a8321f;        /* red raddle smit mark, the one accent */
-  --raddle-ink: #ffffff;    /* text on raddle */
-  --line: #c3c8c2;
-  --band-fg: #e8eae6;       /* text on the slate band */
-  --band-muted: #9aa5ad;
-  --display: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
-  --body: "Public Sans", "Helvetica Neue", Arial, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-}
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --fleece: #1b2126; --fleece-2: #232b31; --slate: #e8eae6; --slate-2: #b7bfc4; --raddle: #d9553d; --raddle-ink: #1b2126;
-  --line: #39434b; --band-fg: #e8eae6; --band-muted: #8f9aa2; color-scheme: dark;
-} }
-:root[data-theme="dark"] {
-  --fleece: #1b2126; --fleece-2: #232b31; --slate: #e8eae6; --slate-2: #b7bfc4; --raddle: #d9553d; --raddle-ink: #1b2126;
-  --line: #39434b; --band-fg: #e8eae6; --band-muted: #8f9aa2; color-scheme: dark;
-}
-* { box-sizing: border-box; }
-body { background: var(--fleece); color: var(--slate); font-family: var(--body); font-size: 17px; line-height: 1.55; margin: 0; }
-.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; }
-a { color: inherit; }
-h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.05; }
-h1 { font-size: clamp(2.4rem, 5vw, 4.2rem); font-weight: 800; letter-spacing: -0.02em; }
-h2 { font-size: clamp(1.7rem, 3vw, 2.4rem); font-weight: 700; letter-spacing: -0.015em; }
-h3 { font-size: 1.25rem; font-weight: 700; }
-p { margin: 0; max-width: 62ch; }
-.eyebrow { font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--raddle); }
-.muted { color: var(--slate-2); }
-.num { font-variant-numeric: tabular-nums; }
-
-/* page: content column + scene column */
-.page { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 48px; }
-.content { min-width: 0; display: grid; }
-.scene-col { display: none; }
-@media (min-width: 980px) {
-  .page { grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr); }
-  .scene-col { display: block; }
-  .mark-big { display: none; }
-}
-
-/* header */
-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 22px; flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
-.brand svg { width: 44px; height: 44px; }
-.wordmark { font-family: var(--display); font-weight: 800; font-size: 1.5rem; letter-spacing: -0.02em; }
-nav { display: flex; gap: 22px; flex-wrap: wrap; font-size: 0.95rem; font-weight: 500; }
-nav a { text-decoration: none; border-bottom: 2px solid transparent; padding-bottom: 2px; }
-nav a:hover, nav a:focus-visible { border-color: var(--raddle); outline: none; }
-
-/* hero */
-.hero { display: grid; gap: 22px; padding-block: 48px 72px; min-height: 60vh; align-content: center; }
-.hero p.lede { font-size: 1.2rem; }
-.cta { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; }
-.btn { display: inline-block; font-family: var(--display); font-weight: 700; padding: 12px 20px; border-radius: 6px; text-decoration: none; border: 2px solid var(--slate); }
-.btn.primary { background: var(--raddle); border-color: var(--raddle); color: var(--raddle-ink); }
-.btn:focus-visible { outline: 3px solid var(--raddle); outline-offset: 2px; }
-.mark-big { width: 100%; max-width: 320px; }
-.mark-big svg { width: 100%; height: auto; display: block; }
-
-/* slate band: the live signal. Full-bleed behind the whole page width, content stays in the column. */
-.band { background: var(--slate); color: var(--band-fg); padding-block: 56px; box-shadow: 0 0 0 100vmax var(--slate); clip-path: inset(0 -100vmax); display: grid; gap: 28px; }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-.stat { border-top: 1px solid var(--band-muted); padding-top: 14px; display: grid; gap: 6px; }
-.stat .big { font-family: var(--display); font-size: clamp(2rem, 3.6vw, 3rem); font-weight: 800; line-height: 1; letter-spacing: -0.02em; }
-.stat .label { color: var(--band-muted); font-size: 0.95rem; }
-.band .eyebrow { color: #e9876f; }
-.band .note { color: var(--band-muted); font-size: 0.9rem; font-family: var(--mono); }
-
-/* sections */
-section.plain { padding-block: 72px; display: grid; gap: 28px; }
-.steps { display: grid; gap: 22px; }
-.step { display: grid; grid-template-columns: 2.2rem 1fr; gap: 6px 14px; padding-top: 14px; border-top: 2px solid var(--slate); }
-.step::before { counter-increment: step; content: counter(step); font-family: var(--mono); font-size: 0.8rem; color: var(--raddle); letter-spacing: 0.1em; padding-top: 6px; }
-.steps { counter-reset: step; }
-.step > div { display: grid; gap: 8px; }
-.products { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-.product { background: var(--fleece-2); padding: 24px; display: grid; gap: 10px; border-radius: 4px; }
-.product.flag { grid-column: 1 / -1; }
-.product .tag { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--slate-2); }
-.product.flag .tag { color: var(--raddle); }
-pre { background: var(--fleece-2); border-left: 3px solid var(--raddle); padding: 18px; overflow-x: auto; font-family: var(--mono); font-size: 0.86rem; line-height: 1.5; margin: 0; border-radius: 0 4px 4px 0; }
-.two { display: grid; gap: 28px; align-items: start; }
-
-/* logo sheet */
-.logos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-.tile { display: grid; place-items: center; gap: 12px; padding: 22px; border: 1px solid var(--line); border-radius: 4px; }
-.tile.on-slate { background: #232b31; color: #e8eae6; }
-.tile.on-fleece { background: #e8eae6; color: #232b31; }
-.tile.on-raddle { background: #a8321f; color: #ffffff; }
-.tile svg { width: 96px; height: 96px; }
-.tile .cap { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; }
-.copybox { display: grid; gap: 10px; }
-textarea { width: 100%; min-height: 150px; font-family: var(--mono); font-size: 0.78rem; background: var(--fleece-2); color: var(--slate); border: 1px solid var(--line); border-radius: 4px; padding: 12px; resize: vertical; }
-button.copy { justify-self: start; font-family: var(--display); font-weight: 700; background: var(--slate); color: var(--fleece); border: 0; padding: 10px 16px; border-radius: 6px; cursor: pointer; }
-button.copy:focus-visible { outline: 3px solid var(--raddle); outline-offset: 2px; }
-
-/* report */
-.report { background: var(--fleece-2); padding: 32px; border-radius: 4px; display: grid; gap: 24px; }
-.addr { font-family: var(--mono); font-size: 0.95rem; user-select: all; background: var(--fleece); padding: 10px 12px; border: 1px solid var(--line); border-radius: 4px; display: inline-block; }
-
-footer { padding-block: 40px 56px; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 0.9rem; color: var(--slate-2); border-top: 1px solid var(--line); }
-
-/* the scene: sticks to the viewport while the content scrolls, and re-poses per section */
-.scene-col { position: relative; }
-.scene { position: sticky; top: env(safe-area-inset-top, 0px); height: 100vh; display: grid; align-content: center; justify-items: center; gap: 18px; padding-inline: 12px; color: var(--slate); --eye: var(--fleece); transition: color 0.8s ease; }
-.scene svg { width: min(100%, 78vh); height: auto; display: block; overflow: visible; }
-.scene .cap { font-family: var(--mono); font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase; position: relative; height: 1.4em; width: 100%; text-align: center; }
-.scene .cap span { position: absolute; inset: 0; opacity: 0; transition: opacity 0.6s ease; }
-.scene .cap span.on { opacity: 1; }
-body[data-stage="signal"] .scene { color: var(--band-fg); --eye: #232b31; }
-
-/* every moving part is a group positioned by CSS transform; SVG user units are px here */
-.scene .s, .scene .dog { transition: transform 1.5s cubic-bezier(0.45, 0, 0.2, 1); }
-.scene .s .body, .scene .dog .body { transition: transform 0.9s ease; transform-box: fill-box; transform-origin: center; }
-.scene .s:nth-child(2) { transition-delay: 0.08s; } .scene .s:nth-child(3) { transition-delay: 0.16s; }
-.scene .s:nth-child(4) { transition-delay: 0.24s; } .scene .s:nth-child(5) { transition-delay: 0.32s; }
-.scene .run, .scene .pen, .scene .gate { transition: opacity 0.9s ease; opacity: 0; }
-.scene .flip { transform: scaleX(-1); }
-
-/* stage: hero. Scattered flock, the dog low on the left, eyeing them. */
-.scene .s1 { transform: translate(92px, 30px); } .scene .s2 { transform: translate(114px, 42px); } .scene .s3 { transform: translate(96px, 52px); }
-.scene .s4 { transform: translate(120px, 64px); } .scene .s5 { transform: translate(102px, 74px); }
-.scene .dog { transform: translate(44px, 86px); }
-.scene .run-a { opacity: 0.7; }
-
-/* stage: signal. The herd moves, all one way. */
-body[data-stage="signal"] .scene .s1 { transform: translate(60px, 46px); } body[data-stage="signal"] .scene .s2 { transform: translate(80px, 52px); }
-body[data-stage="signal"] .scene .s3 { transform: translate(100px, 58px); } body[data-stage="signal"] .scene .s4 { transform: translate(120px, 64px); }
-body[data-stage="signal"] .scene .s5 { transform: translate(140px, 70px); }
-body[data-stage="signal"] .scene .s .body { transform: scaleX(-1); }
-body[data-stage="signal"] .scene .dog { transform: translate(26px, 92px); }
-body[data-stage="signal"] .scene .run-a { opacity: 0; }
-
-/* stage: how. The dog runs out wide; the flock bunches. */
-body[data-stage="how"] .scene .s1 { transform: translate(96px, 50px); } body[data-stage="how"] .scene .s2 { transform: translate(112px, 58px); }
-body[data-stage="how"] .scene .s3 { transform: translate(102px, 68px); } body[data-stage="how"] .scene .s4 { transform: translate(86px, 62px); }
-body[data-stage="how"] .scene .s5 { transform: translate(108px, 42px); }
-body[data-stage="how"] .scene .dog { transform: translate(134px, 92px); }
-body[data-stage="how"] .scene .dog .body { transform: scaleX(-1); }
-body[data-stage="how"] .scene .run-a { opacity: 0; } body[data-stage="how"] .scene .run-b { opacity: 0.7; }
-
-/* stage: products. Netted and settled: five in the pen, the dog sits. */
-body[data-stage="products"] .scene .s1 { transform: translate(66px, 60px); } body[data-stage="products"] .scene .s2 { transform: translate(86px, 60px); }
-body[data-stage="products"] .scene .s3 { transform: translate(106px, 60px); } body[data-stage="products"] .scene .s4 { transform: translate(126px, 60px); }
-body[data-stage="products"] .scene .s5 { transform: translate(96px, 46px); }
-body[data-stage="products"] .scene .dog { transform: translate(30px, 86px); }
-body[data-stage="products"] .scene .run-a { opacity: 0; } body[data-stage="products"] .scene .pen { opacity: 0.8; }
-
-/* stage: report. Yan, tan, tethera: the flock files through the gate and is counted. */
-body[data-stage="report"] .scene .s1 { transform: translate(40px, 78px); } body[data-stage="report"] .scene .s2 { transform: translate(62px, 74px); }
-body[data-stage="report"] .scene .s3 { transform: translate(84px, 70px); } body[data-stage="report"] .scene .s4 { transform: translate(106px, 66px); }
-body[data-stage="report"] .scene .s5 { transform: translate(128px, 62px); }
-body[data-stage="report"] .scene .s .body { transform: scaleX(-1); }
-body[data-stage="report"] .scene .dog { transform: translate(140px, 96px); }
-body[data-stage="report"] .scene .dog .body { transform: scaleX(-1); }
-body[data-stage="report"] .scene .run-a { opacity: 0; } body[data-stage="report"] .scene .gate { opacity: 0.8; }
-
-@media (prefers-reduced-motion: reduce) {
-  .scene .s, .scene .dog, .scene .s .body, .scene .dog .body, .scene .run, .scene .pen, .scene .gate, .scene, .scene .cap span { transition: none; }
-}
-@media (prefers-reduced-motion: no-preference) {
-  .flock { animation: drift 9s ease-in-out infinite alternate; transform-origin: center; }
-  @keyframes drift { from { transform: translate(0, 0); } to { transform: translate(6px, -4px); } }
-}
-@media (max-width: 760px) {
-  .stats, .logos, .products { grid-template-columns: 1fr; }
-}
-</style>
-</head>
-<body>
-
-<!-- The mark: a Border Collie crouched in the eye stance, flock gathered above, the dog's run as a dashed arc. -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <symbol id="tethera-mark" viewBox="0 0 120 120">
-      <path d="M22 88 C 18 58, 44 34, 76 34" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="4 5" stroke-linecap="round" opacity="0.7"/>
-      <g class="flock">
-        <g transform="translate(62 28)"><ellipse cx="0" cy="0" rx="10" ry="7" fill="currentColor"/><circle cx="-10" cy="-1" r="3.2" fill="currentColor" opacity="0.55"/></g>
-        <g transform="translate(84 40)"><ellipse cx="0" cy="0" rx="10" ry="7" fill="currentColor"/><circle cx="-10" cy="-1" r="3.2" fill="currentColor" opacity="0.55"/></g>
-        <g transform="translate(66 50)"><ellipse cx="0" cy="0" rx="10" ry="7" fill="currentColor"/><circle cx="-10" cy="-1" r="3.2" fill="currentColor" opacity="0.55"/></g>
-        <g transform="translate(90 62)"><ellipse cx="0" cy="0" rx="10" ry="7" fill="currentColor"/><circle cx="-10" cy="-1" r="3.2" fill="currentColor" opacity="0.55"/></g>
-        <g transform="translate(72 72)"><ellipse cx="0" cy="0" rx="10" ry="7" fill="currentColor"/><circle cx="-10" cy="-1" r="3.2" fill="currentColor" opacity="0.55"/></g>
-      </g>
-      <g transform="translate(14 78)">
-        <path d="M6 20 C 2 14, 6 6, 16 6 L 34 6 C 40 6, 42 10, 42 14 L 42 22 L 36 22 L 36 16 L 16 16 L 12 22 L 6 22 Z" fill="currentColor"/>
-        <path d="M40 8 L 50 2 L 54 10 C 54 14, 52 16, 48 16 L 44 16 Z" fill="currentColor"/>
-        <path d="M46 2 L 48 -6 L 52 3 Z" fill="currentColor"/>
-        <path d="M51 3 L 56 -3 L 56 6 Z" fill="currentColor"/>
-        <path d="M6 18 C 0 20, -4 26, 0 30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-        <circle cx="50" cy="7" r="1.4" fill="var(--fleece, #e8eae6)"/>
-        <rect x="40" y="9" width="3" height="7" fill="var(--raddle, #a8321f)"/>
-      </g>
-    </symbol>
-    <!-- one sheep and one dog, centred on their own origin, for the moving scene -->
-    <g id="sheep-shape"><ellipse cx="0" cy="0" rx="10" ry="7" fill="currentColor"/><circle cx="-10" cy="-1" r="3.2" fill="currentColor" opacity="0.55"/></g>
-    <g id="dog-shape" transform="translate(-28 -8)">
-      <path d="M6 20 C 2 14, 6 6, 16 6 L 34 6 C 40 6, 42 10, 42 14 L 42 22 L 36 22 L 36 16 L 16 16 L 12 22 L 6 22 Z" fill="currentColor"/>
-      <path d="M40 8 L 50 2 L 54 10 C 54 14, 52 16, 48 16 L 44 16 Z" fill="currentColor"/>
-      <path d="M46 2 L 48 -6 L 52 3 Z" fill="currentColor"/>
-      <path d="M51 3 L 56 -3 L 56 6 Z" fill="currentColor"/>
-      <path d="M6 18 C 0 20, -4 26, 0 30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-      <circle cx="50" cy="7" r="1.4" fill="var(--eye, #e8eae6)"/>
-      <rect x="40" y="9" width="3" height="7" fill="var(--raddle, #a8321f)"/>
-    </g>
-  </defs>
-</svg>
-
-<div class="wrap">
-<div class="page">
-<div class="content">
-  <header>
-    <a class="brand" href="#top" id="top">
-      <svg aria-label="Tethera mark"><use href="#tethera-mark"/></svg>
-      <span class="wordmark">Tethera</span>
-    </a>
-    <nav aria-label="Sections">
-      <a href="#signal">Signal</a>
-      <a href="#products">Products</a>
-      <a href="#report">Shepherd's Warning</a>
-      <a href="#logo">Logo</a>
-      <a href="https://github.com/TetheraLabs/Tethera">GitHub</a>
-    </nav>
-  </header>
-
-  <section class="hero" data-stage="hero">
-    <span class="eyebrow">Robinhood Chain · mainnet 4663</span>
-    <h1>Know when the herd is moving. Before you trade.</h1>
-    <p class="lede">Thousands of automated traders run on the same few models and reach the same conclusion in the same minute. Tethera counts the herd in real time, nets it, and settles the rest at one fair price.</p>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="site.css">
+<nav class="wrap on-image">
+  <a class="wordmark" href="index.html"><img class="mark" src="logo-light.png" alt="" width="695" height="530">Tethera</a>
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
+  <ul><li><a href="herding.html">What is herding?</a></li><li><a href="why.html">Why it matters</a></li><li><a href="how.html">How it works</a></li><li><a href="products.html">Products</a></li><li><a href="stats.html">Stats</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="about.html">About</a></li></ul>
+</nav>
+<header class="hero" id="top">
+  <div class="art">
+    <picture>
+      <source srcset="hero.avif" type="image/avif">
+      <img src="hero.jpg" alt="A Cumbrian shepherd and his Border Collie on a fellside, watching a flock of Herdwick sheep graze above a lake" width="1344" height="768" fetchpriority="high">
+    </picture>
+    <div class="mist"></div>
+  </div>
+  <div class="scrim"></div>
+  <button class="sound" id="sound" type="button" hidden aria-pressed="false"><i></i>Sound</button>
+  <div class="wrap copy">
+    <h1>Know when the herd is moving. <em>Before you trade.</em></h1>
+    <p class="lede">Tethera watches every automated wallet on Robinhood Chain and tells your agent, in the moment it matters, how many others are about to make the same trade.</p>
     <div class="cta">
-      <a class="btn primary" href="#signal">See the live signal</a>
-      <a class="btn" href="#report">Read Shepherd's Warning</a>
-    </div>
-    <p class="muted">Named for the Cumbrian sheep count: yan, tan, tethera. Counting the flock is the job.</p>
-    <div class="mark-big" aria-hidden="true">
-      <svg viewBox="0 0 120 120"><use href="#tethera-mark"/></svg>
-    </div>
-  </section>
-
-  <section class="band" id="signal" data-stage="signal">
-    <span class="eyebrow">What the chain looked like on 14 October 2026</span>
-    <div class="stats">
-      <div class="stat"><span class="big num">58%</span><span class="label">of Uniswap swaps on Robinhood Chain came from wallets that behave like software</span></div>
-      <div class="stat"><span class="big num">270</span><span class="label">automated wallets sold the same ETH/USDG pool inside one minute, at 17:04 UTC</span></div>
-      <div class="stat"><span class="big num">~60 s</span><span class="label">is how long a herd lasts before it clears. Fast enough that only something in the trade path can act on it</span></div>
-    </div>
-    <p class="note">Three and a half hours of swaps, labelled by behaviour, every number verified against the chain. Registered agents in the ERC-8004 registry: 8,792. Registered agents that traded: 1.</p>
-  </section>
-
-  <section class="plain" id="how" data-stage="how">
-    <span class="eyebrow">How it works</span>
-    <h2>See the herd. Net it. Prove the saving.</h2>
-    <div class="steps">
-      <div class="step"><div><h3>See the herd</h3><p>Every swap on the chain is labelled by behaviour within a second of landing. Same-block multi-pool trades, sub-second cadence, computed sizes. No registry needed; the registry is the test set, not the label.</p></div></div>
-      <div class="step"><div><h3>Net it</h3><p>When many wallets want the same trade in the same minute, Tethera matches opposing orders first and settles the rest at one uniform price, as a filler on UniswapX. Nobody signs up. The reactor awards the fill to the best price.</p></div></div>
-      <div class="step"><div><h3>Prove the saving</h3><p>Every fill comes back with the basis points saved against the pool, checkable on-chain. The fee is a share of that number, so it's only paid when the saving happened.</p></div></div>
-    </div>
-  </section>
-
-  <section class="plain" id="products" data-stage="products">
-    <span class="eyebrow">Products</span>
-    <h2>Built to sit in the trade, not beside it.</h2>
-    <div class="products">
-      <div class="product flag">
-        <span class="tag">Flagship · launch</span>
-        <h3>Herd netting</h3>
-        <p>A crowding-aware filler. One call from an agent: intent in, a private answer to "how many others want this right now", and a netted fill out. Wait-for-calm orders and crowd-aware slicing for size. The pre-trade check with an execution step.</p>
-      </div>
-      <div class="product"><span class="tag">Second</span><h3>Crowding-aware pool hook</h3><p>A Uniswap v4 hook that raises a pool's fee when bots crowd it and lowers it when flow is clean. Liquidity providers stop bleeding to arbitrage in the busy minutes. Protected launches for new tokens.</p></div>
-      <div class="product"><span class="tag">Free</span><h3>Signal &amp; herd alerts</h3><p>Pool and direction in, crowding and verdict out: clean, busy, herd. A stream that says "herd forming in pool X". One line to add as an MCP tool.</p></div>
-      <div class="product"><span class="tag">For lenders</span><h3>Wallet intelligence</h3><p>Behavioural fingerprint, bot class, lifetime activity, registered-agent status. Underwriting data for anyone lending to or insuring agents.</p></div>
-      <div class="product"><span class="tag">Long range</span><h3>Crowding insurance</h3><p>Parametric cover that pays when automated-trader correlation spikes while price falls. Needs capital and partners; the destination, not the plan.</p></div>
-    </div>
-  </section>
-
-  <section class="plain" data-stage="products">
-    <div class="two">
-      <div style="display:grid;gap:16px">
-        <span class="eyebrow">The signal</span>
-        <h2>One question, answered in milliseconds.</h2>
-        <p>Pool and direction in. Automated wallets on your side in the last 60 seconds, the other side, how many pools are moving the same way, where that sits in this pool's history, and a plain verdict.</p>
-      </div>
-      <pre>GET /crowding?pool=0x387b…5982&amp;direction=sell0
-
-{
-  "auto_wallets_same":      270,
-  "auto_wallets_opposite":  230,
-  "all_wallets_same":       310,
-  "one_sidedness":          0.54,
-  "pools_moving_same_way":  31,
-  "percentile":             0.99,
-  "verdict":                "busy",
-  "explanation": "270 automated wallets this way
-     but 230 the other way; two-sided flow"
-}</pre>
-    </div>
-  </section>
-
-  <section class="plain" id="report" data-stage="report">
-    <div class="report">
-      <div style="display:grid;gap:14px">
-        <span class="eyebrow">Weekly</span>
-        <h2>Shepherd's Warning</h2>
-        <p>Numbers nobody else publishes about automated trading on Robinhood Chain: registry versus reality, bot share by token class, the most crowded minutes of the week. First issue in the week of 21 October 2026.</p>
-        <p class="muted">Until the list exists, write to the address and you'll get the first one.</p>
-      </div>
-      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
-        <span class="addr">TetheraLabs@proton.me</span>
-        <a class="btn" href="https://github.com/TetheraLabs/Tethera">Follow the code on GitHub</a>
-      </div>
-    </div>
-  </section>
-
-  <section class="plain" id="logo" data-stage="report">
-    <span class="eyebrow">Logo</span>
-    <h2>The collie and the flock.</h2>
-    <p>A Border Collie in the crouched "eye" stance, five Herdwick sheep gathered, and the dog's run drawn as a dashed arc. One red raddle mark on the collar, the same red shepherds use to mark sheep. It is drawn in one colour so it works on fleece, slate and red alike.</p>
-    <div class="logos">
-      <div class="tile on-fleece"><svg><use href="#tethera-mark"/></svg><span class="cap">on fleece</span></div>
-      <div class="tile on-slate"><svg><use href="#tethera-mark"/></svg><span class="cap">on slate</span></div>
-      <div class="tile on-raddle"><svg style="--raddle:#ffffff;--fleece:#a8321f"><use href="#tethera-mark"/></svg><span class="cap">on raddle</span></div>
-    </div>
-    <div class="copybox">
-      <label for="svgsrc" class="muted">The mark as SVG, ready to paste into a file:</label>
-      <textarea id="svgsrc" readonly aria-label="Logo SVG source"></textarea>
-      <button class="copy" id="copybtn" type="button">Copy SVG</button>
-    </div>
-  </section>
-
-  <footer>
-    <span>Tethera Labs · Robinhood Chain</span>
-    <span>yan · tan · tethera</span>
-  </footer>
-</div>
-
-<aside class="scene-col" aria-hidden="true">
-  <div class="scene">
-    <svg viewBox="0 0 170 120">
-      <!-- the dog's runs, one per pose -->
-      <path class="run run-a" d="M52 96 C 48 66, 74 42, 106 36" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="4 5" stroke-linecap="round"/>
-      <path class="run run-b" d="M44 98 C 40 40, 150 18, 134 84" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="4 5" stroke-linecap="round"/>
-      <!-- the pen and the gate -->
-      <rect class="pen" x="50" y="32" width="92" height="44" rx="3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="4 5"/>
-      <g class="gate" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="96" y1="48" x2="96" y2="90"/><line x1="96" y1="52" x2="118" y2="46"/><line x1="96" y1="62" x2="118" y2="56"/><line x1="96" y1="72" x2="118" y2="66"/><line x1="118" y1="42" x2="118" y2="70"/></g>
-      <g class="flock-scene">
-        <g class="s s1"><g class="body"><use href="#sheep-shape"/></g></g>
-        <g class="s s2"><g class="body"><use href="#sheep-shape"/></g></g>
-        <g class="s s3"><g class="body"><use href="#sheep-shape"/></g></g>
-        <g class="s s4"><g class="body"><use href="#sheep-shape"/></g></g>
-        <g class="s s5"><g class="body"><use href="#sheep-shape"/></g></g>
-      </g>
-      <g class="dog"><g class="body"><use href="#dog-shape"/></g></g>
-    </svg>
-    <div class="cap">
-      <span data-for="hero" class="on">the dog has the eye</span>
-      <span data-for="signal">the herd moves one way</span>
-      <span data-for="how">the outrun</span>
-      <span data-for="products">netted, settled</span>
-      <span data-for="report">yan · tan · tethera</span>
+      <a class="btn btn-red" href="herding.html">What is herding?</a>
+      <a class="btn btn-ghost" href="products.html">See the products</a>
     </div>
   </div>
-</aside>
-</div>
+  <div class="caption">Yan, tan, tethera. Three, in the old Cumbrian sheep count.</div>
+</header>
+
+<div class="band">
+  <div class="wrap">
+    <div class="cell"><div class="num">44<small>%</small></div><p class="lab">of Uniswap swaps on Robinhood Chain this week were placed by automated wallets</p></div>
+    <div class="cell"><div class="num">475</div><p class="lab">bots bought the same ETH/USDG pool inside a single minute</p></div>
+    <div class="cell"><div class="num">~60<small>s</small></div><p class="lab">is how long a herd lasts. About one in ten persists past a minute</p></div>
+  </div>
+  <div class="wrap foot mono">Measured on mainnet, seven days to 16 October 2026. <a href="stats.html">All statistics</a></div>
 </div>
 
+<section class="s">
+  <div class="wrap">
+    <div class="head"><div><p class="eyebrow">The idea</p><h2>Count the flock, then open the gate.</h2></div><p class="lead">Thousands of trading agents share the same pools, the same price feeds and the same instincts. When they move together, the pool moves against every one of them. Tethera counts the herd as it forms, so you can trade with it, around it, or after it passes.</p></div>
+    <div class="tiles">
+      <a class="tile" href="herding.html"><span class="eyebrow">01</span><h3>What is herding?</h3><p>Why agents move together, and what a herd looks like on the chain, minute by minute.</p></a>
+      <a class="tile" href="why.html"><span class="eyebrow">02</span><h3>Why it matters</h3><p>Who pays when the herd runs: the agents inside it, the liquidity providers, and whoever lands in the middle.</p></a>
+      <a class="tile" href="how.html"><span class="eyebrow">03</span><h3>How Tethera works</h3><p>Watch, count, route. Behavioural labelling, a one-call signal, and netting inside an attested enclave.</p></a>
+      <a class="tile" href="products.html"><span class="eyebrow">04</span><h3>Products</h3><p>Herd netting first. Then a crowding-aware pool, underwriting data and crowding insurance.</p></a>
+    </div>
+  </div>
+</section>
+
+<section class="s warn" id="warning">
+  <div class="wrap inner">
+    <div>
+      <p class="eyebrow">Shepherd's Warning</p>
+      <h2>A free weekly report on where the herd ran.</h2>
+      <p>The most crowded minutes on Robinhood Chain, which pools herded and which stayed calm, how long the herds lasted, and what they cost the agents inside them. First issue the week of 21 October 2026.</p>
+    </div>
+    <div class="addr">
+      <code id="addr">TetheraLabs@proton.me</code>
+      <button id="copy" type="button">Copy</button>
+      <span class="note">Send a blank email to be told when the first issue goes out.</span>
+    </div>
+  </div>
+</section>
+<footer>
+  <div class="wrap">
+    <span>Tethera Labs · Robinhood Chain · <a href="https://github.com/TetheraLabs/Tethera">github.com/TetheraLabs</a></span>
+    <span>Illustrations: Tethera Labs, 2026</span>
+  </div>
+</footer>
 <script>
-(function () {
-  /* logo copy box */
-  var sym = document.getElementById('tethera-mark');
-  var inner = sym ? sym.innerHTML : '';
-  var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="240" height="240" fill="#232b31" style="color:#232b31;--raddle:#a8321f;--fleece:#e8eae6">' + inner.replace(/var\(--fleece, #e8eae6\)/g, '#e8eae6').replace(/var\(--raddle, #a8321f\)/g, '#a8321f') + '</svg>';
-  var ta = document.getElementById('svgsrc');
-  ta.value = svg;
-  var btn = document.getElementById('copybtn');
-  btn.addEventListener('click', function () {
-    var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy SVG'; }, 1600); };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(ta.value).then(done, function () { ta.focus(); ta.select(); });
-    } else { ta.focus(); ta.select(); }
-  });
-
-  /* scene stages: whichever section crosses the middle of the viewport sets the pose */
-  var caps = document.querySelectorAll('.scene .cap span');
-  function setStage(name) {
-    if (document.body.getAttribute('data-stage') === name) return;
-    document.body.setAttribute('data-stage', name);
-    for (var i = 0; i < caps.length; i++) caps[i].classList.toggle('on', caps[i].getAttribute('data-for') === name);
+(function(){
+  var m=document.querySelector('nav .menu'),u=document.querySelector('nav ul');
+  if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)})}
+  var HAS_AUDIO=false;
+  var sb=document.getElementById('sound');
+  if(sb&&HAS_AUDIO){
+    sb.hidden=false;
+    var wind=new Audio('wind.mp3'),sheep=new Audio('sheep.mp3'),bark=new Audio('bark.mp3');
+    wind.loop=true;sheep.loop=true;wind.volume=0;sheep.volume=0;bark.volume=.28;
+    var on=false,timer=null;
+    function fade(el,to,ms){var from=el.volume,t0=Date.now();(function step(){var k=Math.min(1,(Date.now()-t0)/ms);el.volume=from+(to-from)*k;if(k<1)requestAnimationFrame(step);else if(to===0)el.pause()})()}
+    function schedBark(){timer=setTimeout(function(){if(on){bark.currentTime=0;bark.play().catch(function(){})}schedBark()},25000+Math.random()*35000)}
+    sb.addEventListener('click',function(){
+      on=!on;sb.classList.toggle('on',on);sb.setAttribute('aria-pressed',on);
+      if(on){wind.play().catch(function(){});sheep.play().catch(function(){});fade(wind,.35,1800);fade(sheep,.22,2600);schedBark()}
+      else{fade(wind,0,900);fade(sheep,0,900);clearTimeout(timer)}
+    });
   }
-  var sections = document.querySelectorAll('[data-stage]');
-  if ('IntersectionObserver' in window) {
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) { if (e.isIntersecting) setStage(e.target.getAttribute('data-stage')); });
-    }, { rootMargin: '-45% 0px -45% 0px', threshold: 0 });
-    for (var j = 0; j < sections.length; j++) io.observe(sections[j]);
-  }
-  setStage('hero');
+  var b=document.getElementById('copy'),a=document.getElementById('addr');
+  if(b&&a){b.addEventListener('click',function(){
+    var t=a.textContent.trim(),done=function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1600)};
+    function sel(){try{var r=document.createRange();r.selectNodeContents(a);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected';setTimeout(function(){b.textContent='Copy'},1600)}catch(e){}}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,sel)}else{sel()}
+  })}
 })();
 </script>
-</body>
-</html>

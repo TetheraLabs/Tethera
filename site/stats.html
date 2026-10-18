@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Herd statistics · Tethera</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+<nav class="wrap">
+  <a class="wordmark" href="index.html"><img class="mark" src="logo-dark.png" alt="" width="695" height="530">Tethera</a>
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
+  <ul><li><a href="herding.html">What is herding?</a></li><li><a href="why.html">Why it matters</a></li><li><a href="how.html">How it works</a></li><li><a href="products.html">Products</a></li><li><a href="stats.html" aria-current=page>Stats</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="about.html">About</a></li></ul>
+</nav>
+<header class="pagehead">
+  <div class="wrap">
+    <p class="eyebrow">Herd statistics</p>
+    <h1>Counted every minute. Published every week.</h1>
+    <p class="lede">Numbers straight from the Tethera database on the chain's Uniswap pools. Seven days to 16 October 2026 unless stated.</p>
+  </div>
+</header>
+<section class="s tight">
+  <div class="wrap">
+    <figure class="plate ">
+  <div class="plate-art" aria-hidden="true"><span class="plate-mark"></span></div>
+</figure>
+  </div>
+</section>
+<div class="band">
+  <div class="wrap">
+    <div class="cell"><div class="num">44<small>%</small></div><p class="lab">of swaps placed by automated wallets</p></div>
+    <div class="cell"><div class="num">1,200<small>/day</small></div><p class="lab">one-sided herds: minutes with 15+ automated wallets, four in five on the same side</p></div>
+    <div class="cell"><div class="num">5,100<small>/day</small></div><p class="lab">busy minutes with 15+ automated wallets, most of them two-sided arbitrage</p></div>
+  </div>
+  <div class="wrap foot mono">14.7 million swaps decoded since 10 October 2026. Labels recomputed every ten minutes.</div>
+</div>
+<section class="s">
+  <div class="wrap">
+    <div class="head"><div><p class="eyebrow">Most crowded minutes</p><h2>This week's largest herds.</h2></div><p class="lead">Automated wallets on one side of one pool within a single minute. Times are UTC.</p></div>
+    <div class="tablewrap">
+      <table class="stats">
+        <thead><tr><th>When</th><th>Pool</th><th>Side</th><th class="r">Automated wallets</th><th class="r">All wallets</th></tr></thead>
+        <tbody>
+          <tr><td>15 Oct 02:28</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Buying ETH</td><td class="r">475</td><td class="r">696</td></tr>
+          <tr><td>15 Oct 02:24</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Buying ETH</td><td class="r">472</td><td class="r">662</td></tr>
+          <tr><td>15 Oct 14:10</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Selling ETH</td><td class="r">472</td><td class="r">608</td></tr>
+          <tr><td>15 Oct 15:03</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Selling ETH</td><td class="r">402</td><td class="r">488</td></tr>
+          <tr><td>15 Oct 15:04</td><td>ETH / USDG <span class="mono dim">v3 · 0x52e6…71Ca</span></td><td>Selling ETH</td><td class="r">390</td><td class="r">479</td></tr>
+          <tr><td>14 Oct 17:04</td><td>ETH / USDG <span class="mono dim">v4 · 0x387b…</span></td><td>Selling ETH</td><td class="r">270</td><td class="r">501</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="small">The 14 October minute was checked transaction by transaction on the block explorer. The others come from the per-minute aggregates and are re-verified before each weekly report.</p>
+  </div>
+</section>
+<section class="s">
+  <div class="wrap prose">
+    <h2>How these are counted</h2>
+    <p>A wallet is automated when at least three behavioural signals fire across five or more swaps: trades in several pools inside one block, sub-second gaps between trades, metronomic timing, round trips completed within seconds, sizes that are computed rather than chosen, reaction to a price move within one block, and persistence over days. The ERC-8004 agent registry is used to check the labels, not to make them: registered agents barely trade, so a registry alone would miss almost every bot on the chain.</p>
+    <p>A busy minute has fifteen or more automated wallets in one pool. A herd is a busy minute where four in five of them are on the same side. Numbers are recomputed every ten minutes and the weekly report fixes them for the record.</p>
+    <p class="next"><a class="btn btn-red" href="warning.html">Get the weekly report</a></p>
+  </div>
+</section>
+<footer>
+  <div class="wrap">
+    <span>Tethera Labs · Robinhood Chain · <a href="https://github.com/TetheraLabs/Tethera">github.com/TetheraLabs</a></span>
+    <span>Illustrations: Tethera Labs, 2026</span>
+  </div>
+</footer>
+<script>
+(function(){
+  var m=document.querySelector('nav .menu'),u=document.querySelector('nav ul');
+  if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)})}
+  var HAS_AUDIO=false;
+  var sb=document.getElementById('sound');
+  if(sb&&HAS_AUDIO){
+    sb.hidden=false;
+    var wind=new Audio('wind.mp3'),sheep=new Audio('sheep.mp3'),bark=new Audio('bark.mp3');
+    wind.loop=true;sheep.loop=true;wind.volume=0;sheep.volume=0;bark.volume=.28;
+    var on=false,timer=null;
+    function fade(el,to,ms){var from=el.volume,t0=Date.now();(function step(){var k=Math.min(1,(Date.now()-t0)/ms);el.volume=from+(to-from)*k;if(k<1)requestAnimationFrame(step);else if(to===0)el.pause()})()}
+    function schedBark(){timer=setTimeout(function(){if(on){bark.currentTime=0;bark.play().catch(function(){})}schedBark()},25000+Math.random()*35000)}
+    sb.addEventListener('click',function(){
+      on=!on;sb.classList.toggle('on',on);sb.setAttribute('aria-pressed',on);
+      if(on){wind.play().catch(function(){});sheep.play().catch(function(){});fade(wind,.35,1800);fade(sheep,.22,2600);schedBark()}
+      else{fade(wind,0,900);fade(sheep,0,900);clearTimeout(timer)}
+    });
+  }
+  var b=document.getElementById('copy'),a=document.getElementById('addr');
+  if(b&&a){b.addEventListener('click',function(){
+    var t=a.textContent.trim(),done=function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1600)};
+    function sel(){try{var r=document.createRange();r.selectNodeContents(a);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected';setTimeout(function(){b.textContent='Copy'},1600)}catch(e){}}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,sel)}else{sel()}
+  })}
+})();
+</script>
+</body>
+</html>
