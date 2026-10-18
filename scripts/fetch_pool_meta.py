@@ -33,7 +33,7 @@ with psycopg.connect(DB) as conn, conn.cursor() as cur:
         calls = [("eth_call", [{"to": pool, "data": d}, "latest"]) for pool, proto, _ in group for d in (SEL["token0"], SEL["token1"], SEL["fee"])]
         res = None
         for attempt in range(6):   # the public RPC rate-limits batches; back off rather than give up
-            try: res = rpc.batch(calls); break
+            try: res = rpc.batch(calls, lenient=True); break
             except Exception as e:
                 log(f"batch failed ({str(e)[:60]}), retry {attempt+1} in {15*(attempt+1)}s"); time.sleep(15 * (attempt + 1))
         if res is None: bad += len(group); continue

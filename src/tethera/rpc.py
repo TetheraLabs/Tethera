@@ -112,8 +112,9 @@ class Rpc:
             raise RpcError(out["error"].get("code", 0), out["error"].get("message", ""))
         return out["result"]
 
-    def batch(self, calls: list[tuple[str, list]]) -> list[object]:
-        """Send several calls in one HTTP request. Returns results in order; raises on any error."""
+    def batch(self, calls: list[tuple[str, list]], lenient: bool = False) -> list[object]:
+        """Send several calls in one HTTP request. Returns results in order; raises on any error,
+        or with lenient=True returns None for a call that errored (a reverted eth_call, say)."""
         if not calls:
             return []
         payload = [{"jsonrpc": "2.0", "id": i, "method": m, "params": p} for i, (m, p) in enumerate(calls)]
@@ -125,6 +126,8 @@ class Rpc:
         for i in range(len(calls)):
             o = by_id.get(i)
             if o is None or "error" in o:
+                if lenient:
+                    results.append(None); continue
                 err = (o or {}).get("error", {"code": 0, "message": "missing reply"})
                 raise RpcError(err.get("code", 0), err.get("message", ""))
             results.append(o["result"])
