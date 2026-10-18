@@ -18,3 +18,4 @@ notes/
 bin/
 .cfhome/
 .cloudflared/
+.b2_account
