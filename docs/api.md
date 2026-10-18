@@ -37,6 +37,7 @@ How crowded one side of one pool is right now, over the last 60 seconds.
 - `one_sidedness`: same ÷ (same + opposite). 0.5 is balanced, 1.0 is everyone the same way.
 - `pools_moving_same_way`: pools chain-wide with at least 10 automated wallets on this side in the window. Several at once suggests a shared signal rather than a local event.
 - `percentile`: where `auto_wallets_same` sits in this pool's own per-minute history for this direction. 0.95 means busier than 95% of past minutes. Null when the pool has no history yet.
+- Swaps that cancel themselves inside one transaction (both ways in one pool, nothing settled) are flagged at ingest and never counted, here or anywhere else. In the week to 18 Oct 2026 they were a quarter of the chain's apparent stable-quoted volume.
 - `verdict`: `herd` (15+ automated wallets one way, the other side at most 15% of that), `busy` (15+ but two-sided, or above the 95th percentile), `clean`.
 
 ## GET /v1/herds
