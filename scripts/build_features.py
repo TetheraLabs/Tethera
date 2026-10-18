@@ -95,7 +95,29 @@ LEFT JOIN gapstats g USING (w) LEFT JOIN blocks b USING (w) LEFT JOIN reaction r
 LEFT JOIN roundtrip rt USING (w) LEFT JOIN sizing z USING (w) LEFT JOIN netflow nf USING (w) LEFT JOIN daily d USING (w)
 """
 
-FEATURES_SQL = (FEATURE_CTES.format(source="swaps WHERE (%(since)s::timestamptz IS NULL OR block_time >= %(since)s::timestamptz)")
+# The reaction signal has two implementations with the same meaning (a swap that follows another
+# wallet's swap in the same pool one or two blocks earlier). The EXISTS form is exact but quadratic
+# within a pool, fine for the ten-minute run (6 h window) and hopeless for a week; the window form
+# looks back at the three preceding swaps in the pool and is what the history build uses.
+REACTION_EXISTS = FEATURE_CTES[FEATURE_CTES.index("reaction AS ("):FEATURE_CTES.index("roundtrip AS (")]
+REACTION_WINDOW = """reaction AS (
+    SELECT w, count(*) AS reactive_swaps FROM (
+        SELECT w, block_number,
+               lag(w, 1) OVER o AS w1, lag(block_number, 1) OVER o AS b1,
+               lag(w, 2) OVER o AS w2, lag(block_number, 2) OVER o AS b2,
+               lag(w, 3) OVER o AS w3, lag(block_number, 3) OVER o AS b3
+        FROM s WINDOW o AS (PARTITION BY pool ORDER BY block_number, log_index)) x
+    WHERE (w1 <> w AND b1 BETWEEN block_number - 2 AND block_number - 1)
+       OR (w2 <> w AND b2 BETWEEN block_number - 2 AND block_number - 1)
+       OR (w3 <> w AND b3 BETWEEN block_number - 2 AND block_number - 1)
+    GROUP BY w
+),
+"""
+FEATURE_CTES_WINDOW = FEATURE_CTES.replace(REACTION_EXISTS, REACTION_WINDOW)
+WINDOW_REACTION_FROM_HOURS = 24   # windows this long or longer use the window form
+
+def features_sql(ctes):
+  return (ctes.format(source="swaps WHERE (%(since)s::timestamptz IS NULL OR block_time >= %(since)s::timestamptz)")
     + "INSERT INTO wallet_features " + FEATURE_COLS + FEATURE_SELECT.format(window="p.first_t, p.last_t") + """
 ON CONFLICT (wallet) DO UPDATE SET
     window_start = EXCLUDED.window_start, window_end = EXCLUDED.window_end, n_swaps = EXCLUDED.n_swaps,
@@ -112,6 +134,9 @@ ON CONFLICT (wallet) DO UPDATE SET
     daily_volume_cv = CASE WHEN EXCLUDED.active_days >= 3 OR wallet_features.active_days IS NULL THEN EXCLUDED.daily_volume_cv ELSE wallet_features.daily_volume_cv END,
     computed_at = now();
 """)
+
+FEATURES_SQL = features_sql(FEATURE_CTES)
+FEATURES_SQL_WINDOW = features_sql(FEATURE_CTES_WINDOW)
 
 VOLUME_BOT_SQL = """
 UPDATE {target} SET is_volume_bot = coalesce(
@@ -148,11 +173,11 @@ def main():
       since_ts = None if since is None or end is None else end - __import__("datetime").timedelta(hours=since)
       for attempt in range(5):
           try:
-              cur.execute(FEATURES_SQL, {"since": since_ts}); n = cur.rowcount
+              cur.execute(FEATURES_SQL if since is not None and since < WINDOW_REACTION_FROM_HOURS else FEATURES_SQL_WINDOW, {"since": since_ts}); n = cur.rowcount
               conn.commit(); break
           except psycopg.errors.DeadlockDetected:
               conn.rollback(); log(f"deadlock, retry {attempt+1}"); time.sleep(5)
-      log(f"features computed for {n} wallets in {time.time()-t:.1f}s")
+      log(f"features computed for {n} wallets in {time.time()-t:.1f}s ({'exists' if since is not None and since < WINDOW_REACTION_FROM_HOURS else 'window'} reaction, since={since})")
       cur.execute(LABEL_SQL.format(**LIVE), cfg); conn.commit()
       cur.execute(VOLUME_BOT_SQL.format(**LIVE), vb_cfg); conn.commit()
       cur.execute("UPDATE swaps s SET is_automated = f.is_automated FROM wallet_features f WHERE s.tx_from = f.wallet AND s.is_automated IS DISTINCT FROM f.is_automated")

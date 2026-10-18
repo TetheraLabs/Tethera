@@ -34,22 +34,8 @@ SOURCE = """swaps_archive
 # archive does not have. Over history we use a window-function version: a swap is reactive when any of the
 # three previous swaps in the same pool came from another wallet one or two blocks earlier. Slight undercount
 # in very busy blocks; same meaning.
-REACTION_LIVE = bf.FEATURE_CTES[bf.FEATURE_CTES.index("reaction AS ("):bf.FEATURE_CTES.index("roundtrip AS (")]
-REACTION_HIST = """reaction AS (
-    SELECT w, count(*) AS reactive_swaps FROM (
-        SELECT w, block_number,
-               lag(w, 1) OVER o AS w1, lag(block_number, 1) OVER o AS b1,
-               lag(w, 2) OVER o AS w2, lag(block_number, 2) OVER o AS b2,
-               lag(w, 3) OVER o AS w3, lag(block_number, 3) OVER o AS b3
-        FROM s WINDOW o AS (PARTITION BY pool ORDER BY block_number, log_index)) x
-    WHERE (w1 <> w AND b1 BETWEEN block_number - 2 AND block_number - 1)
-       OR (w2 <> w AND b2 BETWEEN block_number - 2 AND block_number - 1)
-       OR (w3 <> w AND b3 BETWEEN block_number - 2 AND block_number - 1)
-    GROUP BY w
-),
-"""
-assert REACTION_LIVE.startswith("reaction AS (") and REACTION_LIVE.rstrip().endswith(",")
-CTES_HIST = bf.FEATURE_CTES.replace(REACTION_LIVE, REACTION_HIST)
+# the week-long window needs the window form of the reaction signal (see build_features.py)
+CTES_HIST = bf.FEATURE_CTES_WINDOW
 
 FEATURES_HIST_SQL = (CTES_HIST.format(source=SOURCE)
     + "INSERT INTO wallet_features_hist " + bf.FEATURE_COLS

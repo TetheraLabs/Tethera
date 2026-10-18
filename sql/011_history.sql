@@ -67,3 +67,6 @@ BEGIN
   GET DIAGNOSTICS n = ROW_COUNT;
   RETURN n;
 END $$ LANGUAGE plpgsql;
+
+-- 18 Oct 2026: the day rollup picked a nested loop over wallet_features_hist (one day ran 9 h); BRIN row estimates are too low to trust.
+ALTER FUNCTION rollup_pool_minutes_hist(timestamptz,timestamptz,timestamptz,bigint,bigint) SET enable_nestloop = off;
