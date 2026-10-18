@@ -117,7 +117,7 @@ FEATURE_CTES_WINDOW = FEATURE_CTES.replace(REACTION_EXISTS, REACTION_WINDOW)
 WINDOW_REACTION_FROM_HOURS = 24   # windows this long or longer use the window form
 
 def features_sql(ctes):
-  return (ctes.format(source="swaps WHERE (%(since)s::timestamptz IS NULL OR block_time >= %(since)s::timestamptz)")
+  return (ctes.format(source="swaps WHERE NOT self_cancel AND (%(since)s::timestamptz IS NULL OR block_time >= %(since)s::timestamptz)")
     + "INSERT INTO wallet_features " + FEATURE_COLS + FEATURE_SELECT.format(window="p.first_t, p.last_t") + """
 ON CONFLICT (wallet) DO UPDATE SET
     window_start = EXCLUDED.window_start, window_end = EXCLUDED.window_end, n_swaps = EXCLUDED.n_swaps,
@@ -176,6 +176,12 @@ def main():
       t = time.time()
       cur.execute("SELECT max(block_time) FROM swaps"); end = cur.fetchone()[0]
       since_ts = None if since is None or end is None else end - __import__("datetime").timedelta(hours=since)
+      # self-cancelling swaps (one tx, one pool, both ways, nothing settled) are flagged first and ignored by everything below
+      cur.execute("SELECT min(block_number), max(block_number) FROM swaps WHERE %(s)s::timestamptz IS NULL OR block_time >= %(s)s::timestamptz", {"s": since_ts})
+      lo, hi = cur.fetchone()
+      if lo is not None:
+          cur.execute("SELECT flag_self_cancelling('swaps', %s, %s)", (lo, hi)); conn.commit()
+          log(f"self-cancelling flags changed on {cur.fetchone()[0]} swaps")
       for attempt in range(5):
           try:
               cur.execute(FEATURES_SQL if since is not None and since < WINDOW_REACTION_FROM_HOURS else FEATURES_SQL_WINDOW, {"since": since_ts}); n = cur.rowcount

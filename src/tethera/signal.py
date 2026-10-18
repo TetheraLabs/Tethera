@@ -61,13 +61,13 @@ def crowding(pool: str, direction: str, as_of: datetime | None = None, conn=None
                    count(*) FILTER (WHERE direction = %s AND herd)
             FROM (SELECT s.*, s.is_automated AND NOT coalesce(f.is_volume_bot, false) AS herd
                   FROM swaps s LEFT JOIN wallet_features f ON f.wallet = s.tx_from AND f.is_volume_bot
-                  WHERE s.pool = %s AND s.block_time > %s AND s.block_time <= %s) w
+                  WHERE s.pool = %s AND s.block_time > %s AND s.block_time <= %s AND NOT s.self_cancel) w
         """, (direction, opp, direction, direction, pool, start, as_of))
         same, opposite, all_same, swaps_same = cur.fetchone()
         cur.execute("""
             SELECT count(*) FROM (
                 SELECT s.pool FROM swaps s LEFT JOIN wallet_features f ON f.wallet = s.tx_from AND f.is_volume_bot
-                WHERE s.direction = %s AND s.is_automated AND f.wallet IS NULL AND s.block_time > %s AND s.block_time <= %s
+                WHERE s.direction = %s AND s.is_automated AND f.wallet IS NULL AND s.block_time > %s AND s.block_time <= %s AND NOT s.self_cancel
                 GROUP BY s.pool HAVING count(DISTINCT s.tx_from) >= 10) p
         """, (direction, start, as_of))
         pools_same = cur.fetchone()[0]
@@ -99,7 +99,7 @@ def current_herds(min_wallets: int = 15, conn=None) -> list[dict]:
                      count(DISTINCT s.tx_from) FILTER (WHERE s.direction='sell0' AND s.is_automated AND f.wallet IS NULL) AS s,
                      count(DISTINCT s.tx_from) FILTER (WHERE s.direction='buy0'  AND s.is_automated AND f.wallet IS NULL) AS b
               FROM swaps s LEFT JOIN wallet_features f ON f.wallet = s.tx_from AND f.is_volume_bot
-              WHERE s.block_time > %s - interval '60 seconds' AND s.block_time <= %s GROUP BY s.pool)
+              WHERE s.block_time > %s - interval '60 seconds' AND s.block_time <= %s AND NOT s.self_cancel GROUP BY s.pool)
             SELECT pool, CASE WHEN s >= b THEN 'sell0' ELSE 'buy0' END, greatest(s,b), least(s,b)
             FROM w WHERE greatest(s,b) >= %s AND least(s,b) <= 0.15 * greatest(s,b)
             ORDER BY greatest(s,b) DESC

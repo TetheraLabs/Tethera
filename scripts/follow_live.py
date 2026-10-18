@@ -37,7 +37,9 @@ while True:
         a, b = next_block, min(next_block + per_poll - 1, head - 2)
         chunk = sw.fetch_swaps(rpc, a, b, chunk=per_poll)
         sw.attach_tx_from(rpc, chunk, batch_size=20)
-        n += db.insert_swaps(cur, chunk); next_block = b + 1
+        n += db.insert_swaps(cur, chunk)
+        if chunk: cur.execute("SELECT flag_self_cancelling('swaps', %s, %s)", (a, b))   # one tx, one pool, both ways, nothing settled
+        next_block = b + 1
         if time.time() - last_report > 60:
             log(f"at block {next_block}, head {head}, lag {head - next_block}, {n} swaps total, {n / (time.time() - t0) * 60:.0f}/min")
             last_report = time.time()

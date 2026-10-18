@@ -25,7 +25,7 @@ def main():
         df = pd.read_sql("""
             SELECT DISTINCT s.pool, date_trunc('minute', s.block_time) AS minute, s.direction, s.tx_from AS wallet
             FROM swaps s LEFT JOIN wallet_features f ON f.wallet = s.tx_from AND f.is_volume_bot
-            WHERE s.block_time > %(a)s AND s.block_time <= %(b)s AND s.is_automated AND f.wallet IS NULL""", conn, params={"a": start, "b": end})
+            WHERE s.block_time > %(a)s AND s.block_time <= %(b)s AND s.is_automated AND f.wallet IS NULL AND NOT s.self_cancel""", conn, params={"a": start, "b": end})
     log(f"{len(df):,} wallet-cells from {df.wallet.nunique():,} automated wallets in {time.time()-t0:.0f}s")
     df["cell"] = df.groupby(["pool", "minute", "direction"]).ngroup()
     size = df.groupby("cell").wallet.transform("size")

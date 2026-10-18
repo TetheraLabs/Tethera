@@ -42,7 +42,7 @@ WITH s AS (
            p.token0, p.token1
     FROM swaps s LEFT JOIN pools p USING (pool)
     LEFT JOIN tokens t0 ON t0.token = p.token0 LEFT JOIN tokens t1 ON t1.token = p.token1
-    WHERE s.tx_from = ANY(%(wallets)s) AND s.block_time >= %(a)s AND s.block_time < %(b)s
+    WHERE s.tx_from = ANY(%(wallets)s) AND s.block_time >= %(a)s AND s.block_time < %(b)s AND NOT s.self_cancel
 ),
 ordered AS (SELECT w, bucket, t - lag(t) OVER (PARTITION BY w, bucket ORDER BY block_number, log_index) AS gap FROM s),
 gaps AS (

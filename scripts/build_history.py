@@ -28,7 +28,7 @@ HIST = dict(target="wallet_features_hist",
             scope_and="AND window_start = %(week)s::timestamptz")
 
 SOURCE = """swaps_archive
-    WHERE block_number BETWEEN %(lo)s AND %(hi)s AND block_time >= %(week)s::timestamptz AND block_time < %(week_end)s::timestamptz"""
+    WHERE block_number BETWEEN %(lo)s AND %(hi)s AND block_time >= %(week)s::timestamptz AND block_time < %(week_end)s::timestamptz AND NOT self_cancel"""
 
 # The live builder's `reaction` test is an EXISTS self-join that needs the (pool, block_number) index the
 # archive does not have. Over history we use a window-function version: a swap is reactive when any of the
@@ -78,6 +78,8 @@ def main():
             params = dict(week=week, week_end=week_end, lo=lo, hi=hi)
             if not fdone and not ROLLUP_ONLY:
                 t = time.time()
+                n = conn.execute("SELECT flag_self_cancelling('swaps_archive', %s, %s)", (lo, hi)).fetchone()[0]; conn.commit()
+                log(f"week {week:%Y-%m-%d}: self-cancelling flags changed on {n:,} swaps ({time.time()-t:,.0f}s)")
                 n = conn.execute(FEATURES_HIST_SQL, params).rowcount
                 conn.execute(bf.LABEL_SQL.format(**HIST), {**bf.cfg, **params})
                 conn.execute(bf.VOLUME_BOT_SQL.format(**HIST), {**bf.vb_cfg, **params})

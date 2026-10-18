@@ -28,8 +28,11 @@ def main():
         cur.execute("SET work_mem = '256MB'")
         cur.execute("""SELECT count(*), count(DISTINCT tx_from), count(*) FILTER (WHERE is_automated),
                               count(DISTINCT tx_from) FILTER (WHERE is_automated), count(DISTINCT pool)
-                       FROM swaps WHERE block_time >= %s AND block_time < %s""", (FROM, TO))
+                       FROM swaps WHERE block_time >= %s AND block_time < %s AND NOT self_cancel""", (FROM, TO))
         n_swaps, n_wallets, n_auto, n_auto_w, n_pools = cur.fetchone()
+        cur.execute("""SELECT count(*), count(DISTINCT tx_from), count(DISTINCT pool) FROM swaps
+                       WHERE block_time >= %s AND block_time < %s AND self_cancel""", (FROM, TO))
+        sc_swaps, sc_wallets, sc_pools = cur.fetchone()
         cur.execute("SELECT count(*), coalesce(sum(n_swaps),0) FROM wallet_features WHERE is_volume_bot"); vb, vb_swaps = cur.fetchone()
         # herd minutes: one-sided automated crowds
         cur.execute("""
@@ -75,6 +78,7 @@ def main():
              f"*Where the herd ran on Robinhood Chain, {FROM:%-d %B} to {TO:%-d %B %Y}. Measured from every Uniswap swap on the chain; automated wallets identified by behaviour, not by self-declaration. Free, weekly, from Tethera Labs.*\n",
              "## The week in numbers\n",
              f"- {n_swaps:,} swaps in {n_pools:,} pools by {n_wallets:,} wallets.",
+             f"- Not counted above: {sc_swaps:,} self-cancelling swaps by {sc_wallets:,} wallets in {sc_pools:,} pools, each a transaction that swapped both ways in one pool and settled nothing.",
              f"- {n_auto / max(n_swaps,1):.0%} of swaps came from {n_auto_w:,} wallets we label automated. {vb:,} of those run paid volume services and are left out of the herd counts below.",
              f"- {n_eps:,} herds: minutes where {HERD}+ automated wallets hit one pool from the same side with almost nobody on the other. {long_eps:,} of them lasted longer than a minute.",
              (f"- The most crowded minute was {busiest[0]:%a %-d %b %H:%M} UTC: {int(busiest[1]):,} automated wallet-trades across {busiest[2]:,} pools." if busiest else ""),
