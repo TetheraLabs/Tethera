@@ -21,7 +21,7 @@ STABILITY = "--stability" in sys.argv; REPORT = "--report" in sys.argv
 DB = os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")
 REPORT_PATH = os.path.join(os.path.dirname(__file__), "..", "reports", "fingerprints.md")
 SEED = 42
-log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
+log = lambda *a: print(time.strftime("%m-%d %H:%M:%S"), *a, flush=True)
 
 HOUR_COLS = ", ".join(f"count(*) FILTER (WHERE hr = {h}) AS h{h}" for h in range(24))
 DOW_COLS = ", ".join(f"count(*) FILTER (WHERE dow = {d}) AS d{d}" for d in range(7))

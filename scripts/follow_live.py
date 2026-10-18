@@ -18,7 +18,7 @@ BLOCKS_PER_POLL = 20  # keep each getLogs + block batch small
 CATCHUP_POLL = 100    # bigger polls while behind on an endpoint that serves history
 LIMITED = os.environ.get("PAID_RPC_URL")   # the only endpoint that refuses old blocks
 rpc = live_rpc()  # paid endpoint first, public endpoint when it fails
-log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
+log = lambda *a: print(time.strftime("%m-%d %H:%M:%S"), *a, flush=True)
 
 conn = db.connect(autocommit=True); cur = conn.cursor()
 head = rpc.block_number()

@@ -11,7 +11,7 @@ from tethera.rpc import live_rpc, RpcError
 from tethera import swaps as sw
 
 DB = os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")
-log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
+log = lambda *a: print(time.strftime("%m-%d %H:%M:%S"), *a, flush=True)
 SEL = {"token0": "0x0dfe1681", "token1": "0xd21220a7", "fee": "0xddca3f43"}
 ap = argparse.ArgumentParser(); ap.add_argument("--days", type=int, default=None, help="only pools that traded in the last N days (default: all)")
 ap.add_argument("--limit", type=int, default=None); ap.add_argument("--batch", type=int, default=5); ap.add_argument("--v4-chunk", type=int, default=50_000)

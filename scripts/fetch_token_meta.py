@@ -19,7 +19,7 @@ from tethera.rpc import live_rpc, RpcError
 
 MIN = int(sys.argv[sys.argv.index("--min-swaps") + 1]) if "--min-swaps" in sys.argv else 50
 rpc = live_rpc()
-log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
+log = lambda *a: print(time.strftime("%m-%d %H:%M:%S"), *a, flush=True)
 SEL = {"symbol": "0x95d89b41", "name": "0x06fdde03", "decimals": "0x313ce567"}
 
 def dec_string(hexdata):

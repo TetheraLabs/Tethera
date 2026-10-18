@@ -13,7 +13,7 @@ import numpy as np, pandas as pd
 def arg(name, default, cast=float): return cast(sys.argv[sys.argv.index(name) + 1]) if name in sys.argv else default
 HOURS = arg("--hours", 48); MIN_TOGETHER = arg("--min-together", 5, int); MIN_J = arg("--min-jaccard", 0.2); MAX_CELL = arg("--max-cell", 150, int)
 DB = os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")
-log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
+log = lambda *a: print(time.strftime("%m-%d %H:%M:%S"), *a, flush=True)
 
 def main():
     t0 = time.time()

@@ -14,7 +14,7 @@ _cfg_all = tomllib.load(open(os.path.join(os.path.dirname(__file__), "..", "conf
 cfg = _cfg_all["signals"]; vb_cfg = _cfg_all["volume_bots"]
 since = float(sys.argv[sys.argv.index("--since") + 1]) if "--since" in sys.argv else None
 active_minutes = int(sys.argv[sys.argv.index("--active-minutes") + 1]) if "--active-minutes" in sys.argv else None
-log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
+log = lambda *a: print(time.strftime("%m-%d %H:%M:%S"), *a, flush=True)
 
 FEATURE_CTES = """
 WITH s AS (
