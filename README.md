@@ -6,7 +6,7 @@ Thousands of agents run on the same few foundation models and reach the same con
 
 ## Operations
 
-Everything live runs as a launchd user agent on the machine that hosts the database. The plists in `launchd/` carry a `__REPO__` placeholder; `scripts/install_launchd.sh` fills in the checkout path, copies them to `~/Library/LaunchAgents/` and loads them. Logs are in `data/`.
+Everything live runs as a background service on the machine that hosts the database. The service definitions live in a private `ops/` folder (not in this repository); each script here runs standalone with the flags shown in its docstring.
 
 | Job | What it does | Log |
 |---|---|---|
@@ -19,7 +19,7 @@ Everything live runs as a launchd user agent on the machine that hosts the datab
 | `com.tethera.archive` | Nightly 03:00: moves swaps older than 14 days to `swaps_archive` on the external drive | `archive.log` |
 | `com.tethera.backup` | Nightly: Postgres dump to the external drive, 14-day retention | `backup.log` |
 
-Restart one: `launchctl kickstart -k gui/$(id -u)/com.tethera.follow-live`. Install or reinstall one: `scripts/install_launchd.sh com.tethera.follow-live` (no argument installs all of them). `launchctl list | grep tethera` shows pids.
+Services are restarted through the host's service manager; the followers and the API are safe to restart at any time, the labelling job should finish its run first.
 
 **RPC failover.** The followers use `tethera.rpc.live_rpc()`: the paid endpoint (`PAID_RPC_URL`) first, the public endpoint (`RPC_URL`) when it answers 401/403/429/5xx or stops responding. A failed endpoint is retried after 10 minutes. The switch is logged as `[rpc] switched to <host>`.
 

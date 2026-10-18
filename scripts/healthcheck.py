@@ -4,7 +4,7 @@ Writes one JSON line per run to data/health.jsonl. When something is wrong it ap
 line to data/alerts.log and shows a macOS notification, at most once per problem per hour
 (state in data/healthcheck_state.json). Run by hand: python scripts/healthcheck.py
 """
-import json, os, re, shutil, subprocess, sys, time
+import os, json, os, re, shutil, subprocess, sys, time
 from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from dotenv import load_dotenv; load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -96,7 +96,7 @@ def main():
 
     # (e) disk
     h["disk_free_gb"] = {}
-    for path in ("/", "/path/to/archive"):
+    for path in ("/", os.environ.get("ARCHIVE_ROOT", "/")):
         try:
             free = shutil.disk_usage(path).free / 1e9
             h["disk_free_gb"][path] = round(free, 1)

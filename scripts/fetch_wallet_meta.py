@@ -1,11 +1,11 @@
-"""Fill wallet_features.lifetime_tx_count and is_contract via the the paid provider endpoint (latest state only, cheap)."""
+"""Fill wallet_features.lifetime_tx_count and is_contract via the paid endpoint (latest state only, cheap)."""
 import os, sys, time
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from dotenv import load_dotenv; load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 import psycopg
 from tethera.rpc import Rpc
 
-rpc = Rpc(os.environ["PAID_RPC_URL"], min_interval=2.0)   # gentle: shares the plan's RPS cap with the live follower
+rpc = Rpc(os.environ["PAID_RPC_URL"], min_interval=2.0)   # gentle: shares the paid plan's rate cap with the live follower
 log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
 with psycopg.connect(os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")) as conn, conn.cursor() as cur:
     cur.execute("SELECT wallet FROM wallet_features WHERE lifetime_tx_count IS NULL ORDER BY n_swaps DESC")
