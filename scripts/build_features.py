@@ -150,9 +150,14 @@ WHERE is_volume_bot IS DISTINCT FROM coalesce(
 LIVE = dict(target="wallet_features", scope="", scope_f="", scope_and="")
 
 LABEL_SQL = """
-UPDATE {target} f SET signals = sig.signals, n_signals = cardinality(sig.signals),
-    is_automated = (f.n_swaps >= %(min_swaps_to_label)s AND cardinality(sig.signals) >= %(min_signals)s)
+UPDATE {target} f SET signals = sig.signals, n_signals = sig.n,
+    is_automated = (f.n_swaps >= %(min_swaps_to_label)s AND sig.n >= %(min_signals)s)
 FROM (
+    -- same_block_multi_pool and sub_second_gap are one observation (several pools in one block means a
+    -- zero gap), so together they count once; both names stay in the array for the fingerprints. 18 Oct 2026.
+    SELECT wallet, signals,
+           cardinality(signals) - CASE WHEN signals @> ARRAY['same_block_multi_pool', 'sub_second_gap'] THEN 1 ELSE 0 END AS n
+    FROM (
     SELECT wallet, array_remove(ARRAY[
         CASE WHEN multi_pool_blocks >= %(multi_pool_block_min)s THEN 'same_block_multi_pool' END,
         CASE WHEN min_gap IS NOT NULL AND min_gap <= %(sub_second_gap_max)s THEN 'sub_second_gap' END,
@@ -162,7 +167,7 @@ FROM (
         CASE WHEN n_swaps >= 10 AND reactive_swaps::float / n_swaps >= %(reactive_frac_min)s THEN 'reactive' END,
         CASE WHEN n_swaps >= 20 AND span_seconds >= 1800 AND max_gap <= %(persistent_max_idle)s THEN 'persistent' END
     ], NULL) AS signals
-    FROM {target} {scope}
+    FROM {target} {scope}) raw
 ) sig WHERE sig.wallet = f.wallet {scope_f};
 """
 

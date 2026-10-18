@@ -10,7 +10,7 @@ round_trips_min         = 3      # buy->sell (or reverse) same pool within 30 s
 computed_sizes_max_round_frac = 0.05   # almost no round-number amounts (needs >= 10 swaps)
 reactive_frac_min       = 0.5    # share of swaps that follow someone else's in the same pool within 2 blocks (needs >= 10 swaps)
 persistent_max_idle     = 600    # no idle stretch longer than this many seconds, over a span >= 1800 s, >= 20 swaps
-min_signals             = 3
+min_signals             = 3      # independent signals; same_block_multi_pool and sub_second_gap count as one (merged 18 Oct 2026, calibration showed 81% overlap)
 
 [volume_bots]
 # Paid volume services: one pool, no net position, steady daily budget. First guesses, 2026-10-17; tune on a week.
