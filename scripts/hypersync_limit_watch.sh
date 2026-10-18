@@ -4,7 +4,7 @@ cd "$(dirname "$0")/.."
 while true; do
   .venv/bin/python - <<'PY' >> data/hypersync_limit.log 2>&1
 import os,time,json,urllib.request
-from dotenv import load_dotenv; load_dotenv(dotenv_path="$REPO/.env")
+from dotenv import load_dotenv; load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 req=urllib.request.Request(os.environ["HYPERSYNC_URL"]+"/query",data=json.dumps({"from_block":1,"to_block":2,"include_all_blocks":True,"field_selection":{"block":["number"]}}).encode(),headers={"Authorization":"Bearer "+os.environ["HYPERSYNC_TOKEN"],"Content-Type":"application/json"})
 try:
     r=urllib.request.urlopen(req,timeout=30); h=r.headers; st=r.status
