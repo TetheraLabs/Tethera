@@ -15,15 +15,16 @@ log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
 SEL = {"token0": "0x0dfe1681", "token1": "0xd21220a7", "fee": "0xddca3f43"}
 ap = argparse.ArgumentParser(); ap.add_argument("--days", type=int, default=None, help="only pools that traded in the last N days (default: all)")
 ap.add_argument("--limit", type=int, default=None); ap.add_argument("--batch", type=int, default=5); ap.add_argument("--v4-chunk", type=int, default=50_000)
+ap.add_argument("--table", default="swaps", help="swaps (hot) or swaps_archive: where to look for pools we have no row for")
 a = ap.parse_args()
 rpc = live_rpc()
 
 def addr(word): return "0x" + word[-40:] if word and len(word) >= 42 else None
 
 with psycopg.connect(DB) as conn, conn.cursor() as cur:
-    cur.execute("SET statement_timeout = '10min'")
+    cur.execute("SET statement_timeout = '10min'" if a.table == "swaps" else "SET statement_timeout = '2h'")
     since = "AND block_time >= now() - (%s || ' days')::interval" if a.days else ""
-    cur.execute(f"""SELECT s.pool, s.protocol, count(*) FROM swaps s LEFT JOIN pools p ON p.pool = s.pool
+    cur.execute(f"""SELECT s.pool, s.protocol, count(*) FROM {a.table} s LEFT JOIN pools p ON p.pool = s.pool
                     WHERE p.pool IS NULL AND s.protocol IN ('v2', 'v3') {since} GROUP BY 1, 2 ORDER BY 3 DESC {"LIMIT %s" if a.limit else ""}""",
                 tuple(x for x in [a.days, a.limit] if x))
     todo = cur.fetchall(); log(f"{len(todo):,} v2/v3 pools to fetch")
