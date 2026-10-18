@@ -46,7 +46,7 @@ The hot wallet also posts nothing per-pool per-minute; the earlier "posted score
 
 - `beforeSwap` returns the LP fee override for this swap (`OVERRIDE_FEE_FLAG | fee`), so the surcharge and the rebate are per swap, not per pool state. No `updateDynamicLPFee` churn.
 - Base = the pool's configured dynamic base (set at creation, e.g. 25 or 30 bp). Surcharge 20 bp, rebate 10 bp, floor at 1 bp. All three are pool parameters set by the pool creator, bounded by the hook (surcharge ≤ 100 bp, rebate ≤ base).
-- Tethera's slice: **a share of the surcharge only** (proposal: 25% of surcharge, 0% of base), taken through `beforeSwapReturnDelta`. LPs keep the whole base fee and most of the surcharge; Tethera earns only when the hook does something. On the week: $11.6k to Tethera, $34.7k extra to LPs, $3.8k rebated to leaning flow. *Needs the founder's approval.*
+- Tethera's slice: **20% of the surcharge only, 0% of the base fee** (decided 18 Oct 2026; 25% was proposed, 20% chosen for adoption), taken through `beforeSwapReturnDelta`. The share is a constant in the hook with a hard cap of 20% in code, so it can only go down without a redeploy. LPs keep the whole base fee and four fifths of the surcharge; Tethera earns only when the hook does something. On the week's 7-day-label numbers, chain-wide: $161k to Tethera, $642k extra to LPs, $9k rebated to leaning flow; at launch scale (one or two pools) a few dollars a week.
 - Rebates are funded from the base fee of the same swap (the leaning swap simply pays less); no treasury, no claims.
 
 ## 5. Contracts
@@ -63,7 +63,9 @@ The hot wallet also posts nothing per-pool per-minute; the earlier "posted score
 4. Gas report per swap path; target under 60k gas extra on the flagged path.
 5. Review, then one seeded mainnet demo pool; pitch the launchpad and one stock-token issuer with the week-2 number.
 
-## 7. Open points
+## 7. Decisions and open points
+
+- **Decided 18 Oct 2026:** the automated-wallet set is public on-chain (`AutomatedSet`), readable by any hook or contract; Tethera's share is 20% of the surcharge only.
 
 - The week-2 outcome study (24 h horizon) decides the headline: if crowding costs agents measurably over a day, the hook ships with the surcharge; if not, it ships on the five-minute adverse-selection number alone, which is weaker.
 - H and W want a block-level replay rather than minute aggregates; the testnet replay gives that.
