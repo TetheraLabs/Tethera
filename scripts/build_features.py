@@ -178,10 +178,15 @@ def main():
           except psycopg.errors.DeadlockDetected:
               conn.rollback(); log(f"deadlock, retry {attempt+1}"); time.sleep(5)
       log(f"features computed for {n} wallets in {time.time()-t:.1f}s ({'exists' if since is not None and since < WINDOW_REACTION_FROM_HOURS else 'window'} reaction, since={since})")
-      cur.execute(LABEL_SQL.format(**LIVE), cfg); conn.commit()
-      cur.execute(VOLUME_BOT_SQL.format(**LIVE), vb_cfg); conn.commit()
-      cur.execute("UPDATE swaps s SET is_automated = f.is_automated FROM wallet_features f WHERE s.tx_from = f.wallet AND s.is_automated IS DISTINCT FROM f.is_automated")
-      conn.commit()
+      # the labelling statements collide with a concurrent run (the weekly and the ten-minute job overlap on Sundays)
+      for attempt in range(5):
+          try:
+              cur.execute(LABEL_SQL.format(**LIVE), cfg); conn.commit()
+              cur.execute(VOLUME_BOT_SQL.format(**LIVE), vb_cfg); conn.commit()
+              cur.execute("UPDATE swaps s SET is_automated = f.is_automated FROM wallet_features f WHERE s.tx_from = f.wallet AND s.is_automated IS DISTINCT FROM f.is_automated")
+              conn.commit(); break
+          except psycopg.errors.DeadlockDetected:
+              conn.rollback(); log(f"deadlock in labelling, retry {attempt+1}"); time.sleep(15)
       cur.execute("""SELECT count(*), count(*) FILTER (WHERE is_automated), count(*) FILTER (WHERE n_swaps >= %s),
                             count(*) FILTER (WHERE is_registered_agent) FROM wallet_features""", (cfg["min_swaps_to_label"],))
       total, auto, eligible, reg = cur.fetchone()
