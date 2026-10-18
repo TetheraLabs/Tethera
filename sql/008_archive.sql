@@ -1,7 +1,7 @@
 -- Cold archive of historical swaps on the external drive (tablespace tethera_archive).
 -- swaps      = hot tail on the server's SSD (last 14 days), serves the live signal API.
 -- swaps_archive = everything older, plus the historical backfill. Same columns, fewer indexes.
-CREATE TABLESPACE tethera_archive LOCATION '/path/to/archive/pg/tethera_archive';
+CREATE TABLESPACE tethera_archive LOCATION '/path/to/archive/pg/tethera_archive';   -- a directory on the large drive; set per host
 
 CREATE TABLE swaps_archive (LIKE swaps INCLUDING DEFAULTS INCLUDING CONSTRAINTS) TABLESPACE tethera_archive;
 ALTER TABLE swaps_archive ADD PRIMARY KEY (tx_hash, log_index) USING INDEX TABLESPACE tethera_archive;
