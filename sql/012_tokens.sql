@@ -3,6 +3,6 @@ CREATE TABLE IF NOT EXISTS tokens (
     symbol      TEXT,
     name        TEXT,
     decimals    INTEGER,
-    kind        TEXT,              -- 'stock' | 'stable' | 'eth' | 'other' | null until classified
+    kind        TEXT,              -- 'stock' | 'stable' | 'eth' | 'other' | 'copycat' (same symbol as a busier token) | null until classified
     fetched_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );

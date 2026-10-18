@@ -1,5 +1,10 @@
 """Fill the tokens table (symbol, name, decimals) for every token in pools that matter, via eth_call on
-whichever RPC is up, then classify: stock (tokenised equities), stable, eth, other.
+whichever RPC is up, then classify: stock (tokenised equities), stable, eth, other, copycat.
+
+A symbol is cheap to copy (90 tokens call themselves SPCX, a dozen "USDC" are 18-decimal memecoins), so for the
+stock, stable and eth kinds only one token per symbol keeps the kind: the one in the most pools, earliest deployed
+on a tie. The rest become 'copycat' and no longer price anything. A stable must also sit in at least 20 pools: a lone
+"USDC" with 18 decimals and three pools is not USDC, and one such token priced $400B of fake volume in a week.
 
 Usage: python scripts/fetch_token_meta.py [--min-swaps 50]   (pools with at least this many swaps in `swaps`)
 """
@@ -43,11 +48,33 @@ UPDATE tokens SET kind = CASE
     WHEN upper(symbol) IN ('USDG','USDC','USDT','DAI','PYUSD','USDE') THEN 'stable'
     WHEN upper(symbol) IN ('WETH','ETH') THEN 'eth'
     ELSE 'other' END
-WHERE kind IS DISTINCT FROM CASE
+WHERE kind IS DISTINCT FROM 'copycat' AND kind IS DISTINCT FROM CASE
     WHEN symbol ~ '^[A-Z]{1,6}x$' OR lower(name) ~ '(xstock|securit(y|ies)|tokeni[sz]ed (stock|share|equity)|\mstock\M|\metf\M)' THEN 'stock'
     WHEN upper(symbol) IN ('USDG','USDC','USDT','DAI','PYUSD','USDE') THEN 'stable'
     WHEN upper(symbol) IN ('WETH','ETH') THEN 'eth'
     ELSE 'other' END;
+"""
+
+DEDUPE = """
+WITH cand AS (
+    SELECT t.token, t.kind, upper(t.symbol) sym,
+           (SELECT count(*) FROM pools p WHERE p.token0 = t.token OR p.token1 = t.token) AS n_pools,
+           (SELECT min(created_block) FROM pools p WHERE p.token0 = t.token OR p.token1 = t.token) AS first_block
+    FROM tokens t WHERE t.kind IN ('stock', 'stable', 'eth', 'copycat') AND t.symbol IS NOT NULL
+), ranked AS (
+    SELECT token, n_pools, row_number() OVER (PARTITION BY sym ORDER BY n_pools DESC, first_block ASC NULLS LAST, token) AS rn FROM cand
+)
+UPDATE tokens t SET kind = CASE WHEN r.rn = 1 THEN CASE
+        WHEN t.symbol ~ '^[A-Z]{1,6}x$' OR lower(t.name) ~ '(xstock|securit(y|ies)|tokeni[sz]ed (stock|share|equity)|\\mstock\\M|\\metf\\M)' THEN 'stock'
+        WHEN upper(t.symbol) IN ('USDG','USDC','USDT','DAI','PYUSD','USDE') THEN CASE WHEN r.n_pools >= 20 THEN 'stable' ELSE 'copycat' END
+        WHEN upper(t.symbol) IN ('WETH','ETH') THEN 'eth' ELSE 'other' END
+    ELSE 'copycat' END
+FROM ranked r WHERE r.token = t.token
+  AND t.kind IS DISTINCT FROM CASE WHEN r.rn = 1 THEN CASE
+        WHEN t.symbol ~ '^[A-Z]{1,6}x$' OR lower(t.name) ~ '(xstock|securit(y|ies)|tokeni[sz]ed (stock|share|equity)|\\mstock\\M|\\metf\\M)' THEN 'stock'
+        WHEN upper(t.symbol) IN ('USDG','USDC','USDT','DAI','PYUSD','USDE') THEN CASE WHEN r.n_pools >= 20 THEN 'stable' ELSE 'copycat' END
+        WHEN upper(t.symbol) IN ('WETH','ETH') THEN 'eth' ELSE 'other' END
+    ELSE 'copycat' END;
 """
 
 with psycopg.connect(os.environ.get("DATABASE_URL", "postgresql://localhost/tethera"), autocommit=True) as conn, conn.cursor() as cur:
@@ -72,5 +99,6 @@ with psycopg.connect(os.environ.get("DATABASE_URL", "postgresql://localhost/teth
                     (tok, (row.get("symbol") or "")[:64] or None, (row.get("name") or "")[:128] or None, row.get("decimals"), classify(row.get("symbol"), row.get("name"))))
         if i % 100 == 0: log(f"{i}/{len(todo)}")
     cur.execute(RECLASSIFY); log(f"reclassified {cur.rowcount} tokens")
+    cur.execute(DEDUPE); log(f"demoted {cur.rowcount} copycats")
     cur.execute("SELECT kind, count(*) FROM tokens GROUP BY 1 ORDER BY 2 DESC"); log("kinds:", dict(cur.fetchall()))
     cur.execute("SELECT symbol, name FROM tokens WHERE kind='stock' ORDER BY symbol LIMIT 40"); log("stocks:", cur.fetchall())
