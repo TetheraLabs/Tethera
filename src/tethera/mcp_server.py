@@ -9,7 +9,7 @@ except ImportError:                                            # mcp 1.x
     from mcp.server.fastmcp import FastMCP
 
 from . import signal
-from .api import _health
+from .api import _health, _wallet
 
 mcp = FastMCP("tethera", instructions=(
     "Tethera measures herding among automated traders on Robinhood Chain. Before placing a swap, "
@@ -48,6 +48,23 @@ def herds(min_wallets: int = 15) -> dict:
     before choosing a pool, or to avoid pools already in a stampede.
     """
     return {"herds": signal.current_herds(max(5, min(500, int(min_wallets))))}
+
+
+@mcp.tool()
+def wallet(address: str) -> dict:
+    """Behavioural fingerprint of one wallet: what it behaves like, not what it is.
+
+    Covers wallets labelled automated or registered as ERC-8004 agents with enough swaps in the last
+    week. Returns is_automated and the signals behind it, the archetype (a cluster of behaviour with a
+    plain-words label and description: cadence, pools, sizing, hours), the family (wallets that keep
+    trading the same pool, minute and side together) with its size, the three nearest registered
+    agents in feature space, and the key numbers (median_gap, gap_cv, period_s, fast_share, n_pools,
+    stock_share, round_amount_frac, reactive_share, round_trips_per_100, net_flow_frac, ...). Use it
+    to judge whether a counterparty or a crowd member is a bot, how it trades and who it resembles.
+    Returns {"error": ...} when the wallet has no fingerprint.
+    """
+    out = _wallet(address.strip())
+    return out if out is not None else {"error": "no fingerprint for this wallet: not labelled automated or registered, or too few swaps in the window"}
 
 
 @mcp.tool()

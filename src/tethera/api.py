@@ -8,7 +8,7 @@ of each key is stored). Over the limit the answer is 429 with a Retry-After head
 import hashlib, json, os, threading, time
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 
 from . import db, signal
@@ -19,7 +19,7 @@ ANON_RPM, ANON_BURST = 30, 10
 KEY_CACHE_S = 60          # how long a key's limit is remembered before the table is read again
 UNLIMITED = {"/health", "/v1/health", "/docs", "/openapi.json", "/redoc"}
 
-app = FastAPI(title="Tethera", version="0.2", description="Crowding signal for automated traders on Robinhood Chain.")
+app = FastAPI(title="Tethera", version="0.3", description="Crowding signal for automated traders on Robinhood Chain.")
 
 
 class Buckets:
@@ -136,6 +136,34 @@ def _herds(min_wallets: int):
     return {"herds": signal.current_herds(min_wallets)}
 
 
+FINGERPRINT_NUMBERS = ["n_swaps", "median_gap", "gap_cv", "min_gap", "period_s", "fast_share", "hour_entropy",
+                       "busiest_block_start", "busiest_block_share", "weekend_share", "us_hours_share", "n_pools",
+                       "top_pool_share", "stock_share", "stable_share", "other_share", "known_pool_share", "n_tokens",
+                       "round_amount_frac", "repeat_amount_frac", "log_size_median", "log_size_iqr", "reactive_share",
+                       "round_trips_per_100", "net_flow_frac", "multi_pool_per_100"]
+
+
+def _wallet(address: str):
+    """Fingerprint of one wallet, or None when it has none (not automated, not registered, or too few swaps)."""
+    cols = ", ".join("w." + c for c in FINGERPRINT_NUMBERS)
+    with db.connect() as conn:
+        row = conn.execute(f"""SELECT w.wallet, w.computed_at, w.window_start, w.window_end, w.is_automated, w.is_registered_agent,
+                                      w.signals, w.archetype_id, a.label, a.description, w.family_id, w.family_size,
+                                      w.nearest_agents, w.hour_hist, w.weekday_hist, {cols}
+                               FROM wallet_fingerprints w LEFT JOIN fingerprint_archetypes a USING (archetype_id)
+                               WHERE lower(w.wallet) = %s""", (address.lower(),)).fetchone()
+    if not row:
+        return None
+    (wallet, computed_at, ws, we, auto, reg, signals, aid, label, desc, fid, fsize, nearest, hours, days), nums = row[:15], row[15:]
+    utc = lambda t: t.astimezone(timezone.utc).isoformat(timespec="seconds")
+    return {"wallet": wallet, "computed_at": utc(computed_at), "window_start": utc(ws), "window_end": utc(we),
+            "is_automated": auto, "is_registered_agent": reg, "signals": signals,
+            "archetype": {"id": aid, "label": label, "description": desc} if aid is not None else None,
+            "family": {"id": fid, "size": fsize} if fid is not None else None,
+            "nearest_agents": nearest or [], "hour_hist": hours, "weekday_hist": days,
+            **{k: (round(v, 4) if isinstance(v, float) else v) for k, v in zip(FINGERPRINT_NUMBERS, nums)}}
+
+
 POOL = Query(..., min_length=42, max_length=66, description="Pool address (v2/v3) or 32-byte pool id (v4)")
 DIRECTION = Query(..., pattern="^(sell0|buy0)$", description="sell0 = selling token0 into the pool, buy0 = buying token0")
 SIZE = Query(None, gt=0, description="Intended trade size in token0 units (optional; echoed back for now)")
@@ -158,3 +186,11 @@ def crowding(pool: str = POOL, direction: str = DIRECTION, size: float | None = 
 @app.get("/herds", include_in_schema=False)
 def herds(min_wallets: int = MIN_WALLETS):
     return _herds(min_wallets)
+
+
+@app.get("/v1/wallet/{address}")
+def wallet(address: str = Path(..., min_length=42, max_length=42, pattern="^0x[0-9a-fA-F]{40}$", description="Wallet address")):
+    out = _wallet(address)
+    if out is None:
+        raise HTTPException(404, "no fingerprint for this wallet: not labelled automated or registered, or too few swaps in the window")
+    return out
