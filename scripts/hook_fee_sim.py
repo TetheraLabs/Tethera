@@ -3,7 +3,7 @@
 Usage: python scripts/hook_fee_sim.py [--from ISO --to ISO] [--table pool_minutes|pool_minutes_all]
        [--base-bp 30] [--herd 15] [--surcharge-bp 20] [--rebate-bp 10] [--horizon 5] [--out reports/hook_fee_sim.md]
 
-Only pools whose token1 is a stablecoin are priced, so amount1_in is a dollar volume. Three fee schedules
+Only pools with a stablecoin on one side are priced (that side's amount is the dollar volume; stable-as-token0 pools are flipped). Three fee schedules
 per minute and side: flat (base), crowding-adjusted (herd side pays base + surcharge, the leaning-against
 side pays base - rebate, calm minutes pay base), and the same judged one minute late (what an on-chain score
 posted each minute would give the hook). The adverse-selection proxy is the signed price move over the next
@@ -27,6 +27,12 @@ a = ap.parse_args()
 to = datetime.fromisoformat(a.to).replace(tzinfo=timezone.utc) if a.to else datetime.now(timezone.utc)
 frm = datetime.fromisoformat(a.from_).replace(tzinfo=timezone.utc) if a.from_ else to - timedelta(days=7)
 
+# Pools are priced from whichever side is the stablecoin. When the stable is token1 the rows are used as stored; when it is
+# token0 (USDG's address sorts below most tokens, so this is the larger half) the pool is flipped so that "token0" below
+# always means the non-stable token: sides swap, the price inverts, and the dollar volume is the stable side's amount.
+# Copycat-quoted pools are dropped: zero-fee v4 pools pairing USDG with a fake "USDG" printed $500M each in a week by
+# round-tripping inside one transaction (v4 flash accounting settles the net, which is nothing). Static zero-fee pools are
+# dropped for the same reason: a round trip there costs nothing, and in the live week they were almost entirely such trips.
 SQL = f"""
 SELECT m.pool, m.minute, m.direction, m.swaps, m.auto_wallets, m.auto_swaps,
        m.amount1_in / power(10, t1.decimals) AS usd, m.px_median, p.fee,
@@ -35,7 +41,16 @@ FROM {a.table} m
 JOIN pools p ON p.pool = m.pool
 JOIN tokens t1 ON t1.token = p.token1 AND t1.kind = 'stable'
 LEFT JOIN tokens t0 ON t0.token = p.token0
-WHERE coalesce(t0.kind, 'other') <> 'stable' AND m.minute >= %(frm)s AND m.minute < %(to)s AND m.px_median IS NOT NULL AND m.px_median > 0
+WHERE coalesce(t0.kind, 'other') NOT IN ('stable', 'copycat') AND p.fee <> 0 AND m.minute >= %(frm)s AND m.minute < %(to)s AND m.px_median IS NOT NULL AND m.px_median > 0
+UNION ALL
+SELECT m.pool, m.minute, CASE m.direction WHEN 'buy0' THEN 'sell0' ELSE 'buy0' END, m.swaps, m.auto_wallets, m.auto_swaps,
+       m.amount0_in / power(10, t0.decimals) AS usd, 1 / m.px_median, p.fee,
+       coalesce(t1.kind, 'other') AS kind0, coalesce(t1.symbol, left(p.token1, 10)) AS sym0
+FROM {a.table} m
+JOIN pools p ON p.pool = m.pool
+JOIN tokens t0 ON t0.token = p.token0 AND t0.kind = 'stable'
+LEFT JOIN tokens t1 ON t1.token = p.token1
+WHERE coalesce(t1.kind, 'other') NOT IN ('stable', 'copycat') AND p.fee <> 0 AND m.minute >= %(frm)s AND m.minute < %(to)s AND m.px_median IS NOT NULL AND m.px_median > 0
 """
 t = time.time()
 with psycopg.connect(DB) as conn:

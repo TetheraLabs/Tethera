@@ -10,22 +10,24 @@ A Uniswap v4 hook that sets the swap fee per swap from the crowd in the pool rig
 - **Herd side** (flow joining a forming herd): base + surcharge.
 - **Leaning side** (flow against a forming herd): base − rebate.
 
-The pool keeps the dynamic-fee flag (`0x800000`, already set on 230,000 pools on this chain, 24% of stable-quoted volume), so a dynamic fee is normal here; the hook only changes what drives it.
+The pool keeps the dynamic-fee flag (`0x800000`, already set on 230,000 pools on this chain, 17% of stable-quoted volume), so a dynamic fee is normal here; the hook only changes what drives it.
 
 ## 2. What the week of data says
 
+Live week to 18 Oct 2026, $2.99B of stable-quoted volume after dropping copycat "stablecoins", copycat-quoted pools and static zero-fee pools (97% of whose volume was same-transaction round trips that settle nothing under v4 flash accounting).
+
 | | flat 30 bp | adjusted (+20 / −10 bp) | adjusted, judged one minute late |
 |---|---|---|---|
-| Fee revenue | $5.25M | $5.29M (+0.8%) | $5.26M (+0.2%) |
-| Surcharge collected | – | $46.3k | $11.6k |
-| Rebates paid | – | $3.8k | $0.8k |
-| Herd-side volume | – | $23.1M (1.3% of all) | $5.8M |
+| Fee revenue | $8.97M | $9.03M (+0.7%) | $8.99M (+0.3%) |
+| Surcharge collected | – | $78.4k | $34.7k |
+| Rebates paid | – | $19.8k | $11.0k |
+| Herd-side volume | – | $39.2M (1.3% of all) | $17.3M |
 
-- Herd minutes are 1.3% of volume, so the revenue uplift to LPs is under 1%. The hook is **not** a revenue story for LPs; it is an adverse-selection story: in herd minutes the price moves the herd's way by a median +4 bp over the next five minutes, and the move × herd volume ($60.6k) eats 87% of the flat fees earned on that volume ($69.4k). At a flat fee a herd minute is close to worthless for LPs; the surcharge turns it profitable.
+- Herd minutes are 1.3% of volume, so the revenue uplift to LPs is under 1%. The hook is **not** a revenue story for LPs; it is an adverse-selection story: in herd minutes the price moves the herd's way by a median +3 bp over the next five minutes, and the move × herd volume ($81.0k) eats 69% of the flat fees earned on that volume ($117.7k). At a flat fee a herd minute is close to worthless for LPs; the surcharge turns it profitable.
 - For the herd the pitch is the netting simulator's number: in herd minutes the AMM price was ~30 bp worse than a Dutch fill. Joining a herd already costs 30 bp; the surcharge makes that explicit and the rebate pays whoever absorbs it.
-- **Judging one minute late loses three quarters of the surcharge.** Whatever counts the herd must see it within seconds, not minutes.
+- **Judging one minute late loses more than half of the surcharge.** Whatever counts the herd must see it within seconds, not minutes.
 
-Sensitivity is linear: every 10 bp of surcharge is +0.44% revenue; every 5 bp of rebate costs 0.04%.
+Sensitivity is linear: every 10 bp of surcharge is +0.44% revenue; every 5 bp of rebate costs 0.11%.
 
 ## 3. Decision: how the hook knows who is in the herd
 
