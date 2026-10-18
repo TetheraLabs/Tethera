@@ -99,11 +99,12 @@ async def rate_limit(request: Request, call_next):
 
 
 def _health():
+    """Public liveness: how fresh the data is. Internal detail (job pids, disks, paths) stays in the healthcheck log."""
     with db.connect() as conn:
         row = conn.execute("""SELECT max(block_time), max(block_number), count(*)
                               FROM swaps WHERE block_time > now() - interval '5 minutes'""").fetchone()
     latest, latest_block, n = row
-    out = {"latest_swap": latest.isoformat() if latest else None, "swaps_last_5_min": n,
+    out = {"latest_swap": latest.astimezone(timezone.utc).isoformat() if latest else None, "swaps_last_5_min": n,
            "lag_seconds": round((datetime.now(timezone.utc) - latest).total_seconds()) if latest else None,
            "lag_blocks": None, "rpc_endpoint": None}
     try:
@@ -117,8 +118,9 @@ def _health():
         with open(HEALTH_LOG, "rb") as f:
             f.seek(0, 2); size = f.tell(); f.seek(max(0, size - 8192))
             lines = f.read().splitlines()
-            out["last_check"] = json.loads(lines[-1]) if lines else None
-    except (OSError, ValueError):
+            chk = json.loads(lines[-1]) if lines else None
+        out["last_check"] = {"ok": chk.get("ok"), "problems": chk.get("problems", [])} if chk else None
+    except (OSError, ValueError, AttributeError):
         out["last_check"] = None
     return out
 
