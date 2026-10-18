@@ -7,7 +7,7 @@
   <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
   <ul><li><a href="herding.html">What is herding?</a></li><li><a href="why.html">Why it matters</a></li><li><a href="how.html">How it works</a></li><li><a href="products.html">Products</a></li><li><a href="stats.html">Stats</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="about.html">About</a></li></ul>
 </nav>
-<header class="hero" id="top">
+<header class="hero reveal" id="top">
   <div class="art">
     <picture>
       <source srcset="hero.avif" type="image/avif">
@@ -16,6 +16,11 @@
     <div class="mist"></div>
   </div>
   <div class="scrim"></div>
+  <div class="clouds" aria-hidden="true">
+    <i class="l" style="left:-22vw;top:-14vh"></i><i class="l" style="left:0;top:18vh;width:74vmax"></i><i class="l" style="left:-14vw;top:48vh"></i><i class="l" style="left:18vw;top:2vh;width:54vmax"></i>
+    <i class="r" style="right:-20vw;top:-10vh;width:72vmax"></i><i class="r" style="right:-2vw;top:22vh"></i><i class="r" style="right:-12vw;top:52vh;width:68vmax"></i><i class="r" style="right:20vw;top:36vh;width:56vmax"></i>
+    <b style="left:3vw;top:10vh"></b><b style="right:6vw;top:6vh;width:30vmax"></b>
+  </div>
   <button class="sound" id="sound" type="button" hidden aria-pressed="false"><i></i>Sound</button>
   <div class="wrap copy">
     <h1>Know when the herd is moving. <em>Before you trade.</em></h1>
@@ -73,19 +78,43 @@
 (function(){
   var m=document.querySelector('nav .menu'),u=document.querySelector('nav ul');
   if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)})}
-  var HAS_AUDIO=false;
+  /* sound: never starts by itself. Real recordings (wind.mp3, sheep.mp3, bark.mp3 next to this page) when they exist;
+     until then a soft synthesised wind so the button does something. */
   var sb=document.getElementById('sound');
-  if(sb&&HAS_AUDIO){
+  if(sb){
     sb.hidden=false;
-    var wind=new Audio('wind.mp3'),sheep=new Audio('sheep.mp3'),bark=new Audio('bark.mp3');
-    wind.loop=true;sheep.loop=true;wind.volume=0;sheep.volume=0;bark.volume=.28;
-    var on=false,timer=null;
+    var on=false,timer=null,clips=null,synth=null;
     function fade(el,to,ms){var from=el.volume,t0=Date.now();(function step(){var k=Math.min(1,(Date.now()-t0)/ms);el.volume=from+(to-from)*k;if(k<1)requestAnimationFrame(step);else if(to===0)el.pause()})()}
-    function schedBark(){timer=setTimeout(function(){if(on){bark.currentTime=0;bark.play().catch(function(){})}schedBark()},25000+Math.random()*35000)}
+    function schedBark(){timer=setTimeout(function(){if(on&&clips){clips.bark.currentTime=0;clips.bark.play().catch(function(){})}if(on)schedBark()},25000+Math.random()*35000)}
+    function loadClips(cb){
+      var wind=new Audio('wind.mp3'),sheep=new Audio('sheep.mp3'),bark=new Audio('bark.mp3');
+      wind.loop=true;sheep.loop=true;wind.volume=0;sheep.volume=0;bark.volume=.28;
+      var ok=true,left=2;function done(){if(--left===0)cb(ok?{wind:wind,sheep:sheep,bark:bark}:null)}
+      [wind,sheep].forEach(function(a){a.addEventListener('canplaythrough',done,{once:true});a.addEventListener('error',function(){ok=false;done()},{once:true});a.load()});
+    }
+    function windSynth(){
+      var C=window.AudioContext||window.webkitAudioContext;if(!C)return null;var ctx=new C();
+      var len=ctx.sampleRate*4,buf=ctx.createBuffer(1,len,ctx.sampleRate),d=buf.getChannelData(0),last=0;
+      for(var i=0;i<len;i++){var w=Math.random()*2-1;last=(last+.02*w)/1.02;d[i]=last*3.5}      /* brown-ish noise */
+      var src=ctx.createBufferSource();src.buffer=buf;src.loop=true;
+      var lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=420;lp.Q.value=.7;
+      var lfo=ctx.createOscillator(),lfoG=ctx.createGain();lfo.frequency.value=.09;lfoG.gain.value=160;lfo.connect(lfoG);lfoG.connect(lp.frequency);
+      var g=ctx.createGain();g.gain.value=0;src.connect(lp);lp.connect(g);g.connect(ctx.destination);src.start();lfo.start();
+      return {ctx:ctx,gain:g,start:function(){ctx.resume();g.gain.cancelScheduledValues(ctx.currentTime);g.gain.linearRampToValueAtTime(.18,ctx.currentTime+2.2)},
+              stop:function(){g.gain.cancelScheduledValues(ctx.currentTime);g.gain.linearRampToValueAtTime(0,ctx.currentTime+.9)}};
+    }
+    function start(){
+      on=true;sb.classList.add('on');sb.setAttribute('aria-pressed','true');
+      if(clips){clips.wind.play().catch(function(){});clips.sheep.play().catch(function(){});fade(clips.wind,.35,1800);fade(clips.sheep,.22,2600);schedBark();return}
+      if(!synth)synth=windSynth();if(synth)synth.start();
+    }
+    function stop(){
+      on=false;sb.classList.remove('on');sb.setAttribute('aria-pressed','false');clearTimeout(timer);
+      if(clips){fade(clips.wind,0,900);fade(clips.sheep,0,900)}else if(synth){synth.stop()}
+    }
     sb.addEventListener('click',function(){
-      on=!on;sb.classList.toggle('on',on);sb.setAttribute('aria-pressed',on);
-      if(on){wind.play().catch(function(){});sheep.play().catch(function(){});fade(wind,.35,1800);fade(sheep,.22,2600);schedBark()}
-      else{fade(wind,0,900);fade(sheep,0,900);clearTimeout(timer)}
+      if(on){stop();return}
+      if(clips===null&&!sb.dataset.tried){sb.dataset.tried='1';loadClips(function(c){clips=c;start()})}else{start()}
     });
   }
   var b=document.getElementById('copy'),a=document.getElementById('addr');
