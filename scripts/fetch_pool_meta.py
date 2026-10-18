@@ -14,7 +14,7 @@ DB = os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")
 log = lambda *a: print(time.strftime("%H:%M:%S"), *a, flush=True)
 SEL = {"token0": "0x0dfe1681", "token1": "0xd21220a7", "fee": "0xddca3f43"}
 ap = argparse.ArgumentParser(); ap.add_argument("--days", type=int, default=None, help="only pools that traded in the last N days (default: all)")
-ap.add_argument("--limit", type=int, default=None); ap.add_argument("--batch", type=int, default=10); ap.add_argument("--v4-chunk", type=int, default=50_000)
+ap.add_argument("--limit", type=int, default=None); ap.add_argument("--batch", type=int, default=5); ap.add_argument("--v4-chunk", type=int, default=50_000)
 a = ap.parse_args()
 rpc = live_rpc()
 
@@ -31,8 +31,12 @@ with psycopg.connect(DB) as conn, conn.cursor() as cur:
     for i in range(0, len(todo), a.batch):
         group = todo[i:i + a.batch]
         calls = [("eth_call", [{"to": pool, "data": d}, "latest"]) for pool, proto, _ in group for d in (SEL["token0"], SEL["token1"], SEL["fee"])]
-        try: res = rpc.batch(calls)
-        except RpcError as e: log(f"batch failed: {str(e)[:80]}"); bad += len(group); continue
+        res = None
+        for attempt in range(6):   # the public RPC rate-limits batches; back off rather than give up
+            try: res = rpc.batch(calls); break
+            except Exception as e:
+                log(f"batch failed ({str(e)[:60]}), retry {attempt+1} in {15*(attempt+1)}s"); time.sleep(15 * (attempt + 1))
+        if res is None: bad += len(group); continue
         rows = []
         for j, (pool, proto, _) in enumerate(group):
             t0, t1, fee = res[3 * j:3 * j + 3]
