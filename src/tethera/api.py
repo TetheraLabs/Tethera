@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from . import db, signal
 from .rpc import live_rpc
@@ -20,6 +21,8 @@ KEY_CACHE_S = 60          # how long a key's limit is remembered before the tabl
 UNLIMITED = {"/health", "/v1/health", "/docs", "/openapi.json", "/redoc"}
 
 app = FastAPI(title="Tethera", version="0.4", description="Crowding signal for automated traders on Robinhood Chain.")
+# the site reads the API from the browser; the API is public and read-only, so any origin may call it
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"], max_age=3600)
 
 
 class Buckets:

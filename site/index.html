@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tethera</title>
+<meta name="description" content="A crowding check for automated traders on Robinhood Chain. What is real, counted every minute.">
+<meta name="color-scheme" content="light">
+<style>
+  /* Placeholder scene: the painted layers replace the SVG shapes here, same canvas (1600 x 900), same layer order. */
+  :root {
+    --sky-top: #cfe3f3; --sky-low: #f3ead8; --hill-far: #b9c6b0; --hill-near: #8fa380; --grass: #6f8a5c; --grass-dark: #5a7349;
+    --ink: #2b2f2a; --ink-soft: #5c6358; --paper: #f7f3ea; --line: #d9d2c3; --accent: #7a5c3a; --cloud: #ffffff;
+    --reveal-delay: 900ms; --reveal: 4200ms;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: Georgia, "Iowan Old Style", "Palatino Linotype", serif; }
+  body { line-height: 1.5; }
+  a { color: var(--accent); }
+
+  /* ---------- hero scene ---------- */
+  .scene { position: relative; height: 100svh; min-height: 520px; overflow: hidden; background: linear-gradient(var(--sky-top), var(--sky-low) 70%, var(--grass) 70.5%); }
+  .layer { position: absolute; inset: 0; width: 100%; height: 100%; will-change: transform; }
+  .layer svg { position: absolute; left: 50%; bottom: 0; height: 100%; width: auto; min-width: 100%; transform: translateX(-50%); }
+  .sun { position: absolute; top: 12%; right: 18%; width: 9vmin; height: 9vmin; border-radius: 50%; background: radial-gradient(circle, #fff6d6 0 55%, rgba(255,246,214,0) 70%); filter: blur(1px); }
+
+  /* clouds: a few soft shapes; left ones leave left, right ones leave right */
+  .clouds { position: absolute; inset: 0; pointer-events: none; }
+  .cloud { position: absolute; width: 60vmax; height: 32vmax; border-radius: 50%; background: radial-gradient(ellipse at center, var(--cloud) 0 38%, rgba(255,255,255,.85) 52%, rgba(255,255,255,0) 72%); filter: blur(6px); opacity: .98; }
+  .cloud.l { animation: leave-left var(--reveal) cubic-bezier(.55,.05,.35,1) var(--reveal-delay) forwards; }
+  .cloud.r { animation: leave-right var(--reveal) cubic-bezier(.55,.05,.35,1) var(--reveal-delay) forwards; }
+  @keyframes leave-left  { to { transform: translateX(-130vw) scale(1.25); opacity: 0; } }
+  @keyframes leave-right { to { transform: translateX( 130vw) scale(1.25); opacity: 0; } }
+  /* thin clouds that stay and drift */
+  .wisp { position: absolute; width: 38vmax; height: 10vmax; border-radius: 50%; background: radial-gradient(ellipse at center, rgba(255,255,255,.75) 0 40%, rgba(255,255,255,0) 70%); filter: blur(8px); opacity: 0; animation: wisp-in 2s ease calc(var(--reveal-delay) + var(--reveal) - 800ms) forwards, drift 90s linear infinite; }
+  @keyframes wisp-in { to { opacity: .9; } }
+  @keyframes drift { from { translate: -6vw 0; } to { translate: 6vw 0; } }
+
+  /* gentle life in the scene */
+  .flock { animation: graze 7s ease-in-out infinite; }
+  @keyframes graze { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-.35%); } }
+  .grass-fore { transform-origin: 50% 100%; animation: sway 6s ease-in-out infinite; }
+  @keyframes sway { 0%,100% { transform: skewX(0deg); } 50% { transform: skewX(1.2deg); } }
+
+  .title { position: absolute; left: 0; right: 0; top: 7%; text-align: center; opacity: 0; animation: fade-in 1.6s ease calc(var(--reveal-delay) + var(--reveal) - 1200ms) forwards; }
+  .title h1 { margin: 0; font-weight: normal; font-size: clamp(2.2rem, 6vw, 4.6rem); letter-spacing: .18em; text-transform: uppercase; color: var(--ink); }
+  .title p { margin: .4em 0 0; font-size: clamp(1rem, 1.6vw, 1.25rem); color: var(--ink-soft); letter-spacing: .04em; }
+  @keyframes fade-in { to { opacity: 1; } }
+
+  .sound { position: absolute; right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); z-index: 5; border: 1px solid rgba(43,47,42,.35); background: rgba(247,243,234,.75); color: var(--ink); font: inherit; font-size: .85rem; letter-spacing: .08em; text-transform: uppercase; padding: .55em .9em; border-radius: 999px; cursor: pointer; backdrop-filter: blur(4px); }
+  .sound[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+  .sound .dot { display: inline-block; width: .55em; height: .55em; border-radius: 50%; background: currentColor; margin-right: .5em; opacity: .5; }
+  .sound[aria-pressed="true"] .dot { opacity: 1; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { transform: scale(.6); } }
+
+  .scroll-hint { position: absolute; left: 0; right: 0; bottom: max(18px, env(safe-area-inset-bottom)); text-align: center; font-size: .8rem; letter-spacing: .2em; text-transform: uppercase; color: var(--ink-soft); opacity: 0; animation: fade-in 1.6s ease calc(var(--reveal-delay) + var(--reveal)) forwards; }
+
+  /* ---------- below the fold ---------- */
+  main { max-width: 68ch; margin: 0 auto; padding: 4rem 16px 6rem; }
+  nav.pages { display: flex; flex-wrap: wrap; gap: .6rem 1.4rem; justify-content: center; padding: 1.4rem 16px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: .9rem; letter-spacing: .14em; text-transform: uppercase; }
+  nav.pages a { text-decoration: none; color: var(--ink-soft); }
+  nav.pages a:hover { color: var(--ink); }
+  h2 { font-weight: normal; font-size: 1.6rem; margin: 2.4rem 0 .6rem; text-wrap: balance; }
+  p { margin: .6rem 0; }
+  .count { display: grid; grid-template-columns: repeat(auto-fit, minmax(14ch, 1fr)); gap: 1rem; margin: 1.6rem 0; }
+  .count div { border-top: 2px solid var(--ink); padding-top: .5rem; }
+  .count b { display: block; font-size: 2rem; font-weight: normal; font-variant-numeric: tabular-nums; }
+  .count span { font-size: .85rem; color: var(--ink-soft); letter-spacing: .06em; text-transform: uppercase; }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .9em; background: #efe9dc; padding: .1em .35em; border-radius: 3px; }
+  footer { color: var(--ink-soft); font-size: .85rem; text-align: center; padding: 2rem 16px 3rem; border-top: 1px solid var(--line); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cloud.l, .cloud.r { animation: cloud-fade 1.8s ease var(--reveal-delay) forwards; }
+    @keyframes cloud-fade { to { opacity: 0; } }
+    .wisp { animation: wisp-in 1.8s ease calc(var(--reveal-delay) + 1200ms) forwards; }
+    .flock, .grass-fore { animation: none; }
+    .title, .scroll-hint { animation-delay: calc(var(--reveal-delay) + 800ms); }
+  }
+</style>
+</head>
+<body>
+
+<section class="scene" id="scene" aria-label="A shepherd with his flock on a hillside">
+  <div class="sun" aria-hidden="true"></div>
+
+  <!-- far hills -->
+  <div class="layer" data-depth="0.08" aria-hidden="true">
+    <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+      <path fill="var(--hill-far)" d="M0 640 C 200 560, 380 600, 560 560 S 900 500, 1100 560 S 1450 540, 1600 600 L1600 900 L0 900 Z"/>
+    </svg>
+  </div>
+
+  <!-- near hills -->
+  <div class="layer" data-depth="0.16" aria-hidden="true">
+    <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+      <path fill="var(--hill-near)" d="M0 720 C 250 660, 500 700, 760 650 S 1200 620, 1600 700 L1600 900 L0 900 Z"/>
+    </svg>
+  </div>
+
+  <!-- shepherd and flock (placeholder silhouettes; the painting goes here) -->
+  <div class="layer flock" data-depth="0.26" aria-hidden="true">
+    <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+      <g fill="#f4efe4" stroke="#cfc7b6" stroke-width="2">
+        <ellipse cx="560" cy="742" rx="26" ry="16"/><ellipse cx="620" cy="760" rx="30" ry="18"/><ellipse cx="690" cy="748" rx="27" ry="16"/>
+        <ellipse cx="760" cy="770" rx="31" ry="19"/><ellipse cx="840" cy="756" rx="28" ry="17"/><ellipse cx="905" cy="776" rx="30" ry="18"/>
+        <ellipse cx="980" cy="760" rx="26" ry="16"/><ellipse cx="1050" cy="778" rx="29" ry="18"/><ellipse cx="1120" cy="762" rx="25" ry="15"/>
+      </g>
+      <g fill="#2f2a24">
+        <ellipse cx="538" cy="742" rx="7" ry="6"/><ellipse cx="596" cy="760" rx="7" ry="6"/><ellipse cx="668" cy="748" rx="7" ry="6"/>
+        <ellipse cx="736" cy="770" rx="7" ry="6"/><ellipse cx="818" cy="756" rx="7" ry="6"/><ellipse cx="882" cy="776" rx="7" ry="6"/>
+        <ellipse cx="960" cy="760" rx="6" ry="5"/><ellipse cx="1028" cy="778" rx="7" ry="6"/><ellipse cx="1100" cy="762" rx="6" ry="5"/>
+        <!-- shepherd -->
+        <circle cx="470" cy="660" r="13"/>
+        <path d="M456 676 L484 676 L492 760 L448 760 Z"/>
+        <path d="M448 700 L430 760 M492 700 L512 740" stroke="#2f2a24" stroke-width="9" stroke-linecap="round"/>
+        <path d="M514 640 L514 770" stroke="#2f2a24" stroke-width="6" stroke-linecap="round"/>
+        <path d="M514 640 C 500 620, 530 612, 526 636" stroke="#2f2a24" stroke-width="6" fill="none" stroke-linecap="round"/>
+        <!-- dog -->
+        <ellipse cx="400" cy="762" rx="16" ry="9"/><circle cx="416" cy="752" r="6"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- foreground grass -->
+  <div class="layer grass-fore" data-depth="0.4" aria-hidden="true">
+    <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
+      <path fill="var(--grass-dark)" d="M0 820 C 180 790, 300 830, 480 800 S 800 790, 1000 815 S 1400 790, 1600 820 L1600 900 L0 900 Z"/>
+    </svg>
+  </div>
+
+  <!-- clouds that clear -->
+  <div class="clouds" aria-hidden="true">
+    <div class="cloud l" style="left:-18vw; top:-10vh;"></div>
+    <div class="cloud l" style="left:4vw; top:22vh; width:70vmax;"></div>
+    <div class="cloud l" style="left:-10vw; top:48vh;"></div>
+    <div class="cloud r" style="right:-16vw; top:-6vh; width:68vmax;"></div>
+    <div class="cloud r" style="right:2vw; top:26vh;"></div>
+    <div class="cloud r" style="right:-8vw; top:52vh; width:64vmax;"></div>
+    <div class="cloud l" style="left:22vw; top:6vh; width:50vmax;"></div>
+    <div class="cloud r" style="right:24vw; top:40vh; width:52vmax;"></div>
+    <!-- the ones that stay -->
+    <div class="wisp" style="left:6vw; top:14vh;"></div>
+    <div class="wisp" style="right:10vw; top:9vh; width:30vmax;"></div>
+  </div>
+
+  <div class="title">
+    <h1>Tethera</h1>
+    <p>What is real on Robinhood Chain, counted every minute.</p>
+  </div>
+
+  <button class="sound" id="sound" aria-pressed="false" title="Countryside sound"><span class="dot"></span>Sound</button>
+  <div class="scroll-hint">Scroll</div>
+  <audio id="ambience" loop preload="none">
+    <source src="assets/ambience.ogg" type="audio/ogg">
+    <source src="assets/ambience.mp3" type="audio/mpeg">
+  </audio>
+</section>
+
+<nav class="pages" aria-label="Pages">
+  <a href="#why">Why</a><a href="#how">How</a><a href="#products">Products</a><a href="#stats">Stats</a><a href="#warning">Warning</a><a href="#about">About</a>
+</nav>
+
+<main>
+  <h2 id="stats">Counting now</h2>
+  <div class="count" id="count">
+    <div><b id="c-swaps">–</b><span>swaps, last 5 minutes</span></div>
+    <div><b id="c-herds">–</b><span>herds forming right now</span></div>
+    <div><b id="c-lag">–</b><span>seconds behind the chain</span></div>
+  </div>
+  <p>Live from <code>api.tetheralabs.com</code>. A herd is fifteen or more automated wallets trading the same way in the same pool in the same minute, with almost nobody on the other side.</p>
+
+  <h2 id="why">Why</h2>
+  <p>Placeholder. The monoculture story: thousands of bots running the same strategy at the same moment, and what that costs the ones who join late.</p>
+
+  <h2 id="how">How</h2>
+  <p>Placeholder. Seven behavioural signals, a seven-day window, one label; self-cancelling trades removed before anything is counted.</p>
+
+  <h2 id="products">Products</h2>
+  <p>Placeholder. The crowding check, the pool trust profile, the wallet fingerprint, the hook.</p>
+
+  <h2 id="warning">Shepherd's Warning</h2>
+  <p>Placeholder. The weekly letter. Issue one: one wallet printed a billion dollars.</p>
+
+  <h2 id="about">About</h2>
+  <p>Placeholder. Tethera Labs. <code>TetheraLabs@proton.me</code>.</p>
+</main>
+
+<footer>Tethera Labs. Data from Robinhood Chain, read block by block.</footer>
+
+<script>
+(function () {
+  // parallax: each layer moves a little with scroll, in proportion to its depth
+  var layers = Array.prototype.slice.call(document.querySelectorAll('.layer'));
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduce) {
+    var ticking = false;
+    window.addEventListener('scroll', function () {
+      if (ticking) return; ticking = true;
+      requestAnimationFrame(function () {
+        var y = window.scrollY || 0;
+        layers.forEach(function (el) { el.style.transform = 'translateY(' + (y * parseFloat(el.dataset.depth || 0)).toFixed(1) + 'px)'; });
+        ticking = false;
+      });
+    }, { passive: true });
+  }
+
+  // sound: never starts by itself; the toggle remembers the choice and only plays after a click
+  var btn = document.getElementById('sound'), audio = document.getElementById('ambience');
+  var want = false;
+  try { want = localStorage.getItem('tethera-sound') === 'on'; } catch (e) {}
+  function setState(on) {
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.lastChild.textContent = on ? 'Sound on' : 'Sound';
+    try { localStorage.setItem('tethera-sound', on ? 'on' : 'off'); } catch (e) {}
+  }
+  function play() {
+    audio.volume = 0; audio.play().then(function () {
+      var v = 0, t = setInterval(function () { v = Math.min(0.6, v + 0.03); audio.volume = v; if (v >= 0.6) clearInterval(t); }, 120);
+      setState(true);
+    }).catch(function () { btn.lastChild.textContent = 'Sound unavailable'; });
+  }
+  btn.addEventListener('click', function () {
+    if (btn.getAttribute('aria-pressed') === 'true') { audio.pause(); setState(false); } else { play(); }
+  });
+  audio.addEventListener('error', function () { btn.lastChild.textContent = 'Sound coming'; btn.disabled = true; });
+  if (want) { btn.lastChild.textContent = 'Sound (click)'; }
+
+  // live counts
+  var API = 'https://api.tetheralabs.com';
+  function num(n) { return n == null ? '–' : Number(n).toLocaleString('en-GB'); }
+  function refresh() {
+    fetch(API + '/v1/health').then(function (r) { return r.json(); }).then(function (h) {
+      document.getElementById('c-swaps').textContent = num(h.swaps_last_5_min);
+      document.getElementById('c-lag').textContent = num(h.lag_seconds);
+    }).catch(function () {});
+    fetch(API + '/v1/herds').then(function (r) { return r.json(); }).then(function (h) {
+      document.getElementById('c-herds').textContent = num((h.herds || []).length);
+    }).catch(function () {});
+  }
+  refresh(); setInterval(refresh, 30000);
+})();
+</script>
+</body>
+</html>
