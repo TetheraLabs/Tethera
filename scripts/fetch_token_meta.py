@@ -1,6 +1,9 @@
 """Fill the tokens table (symbol, name, decimals) for every token in pools that matter, via eth_call on
 whichever RPC is up, then classify: stock (tokenised equities), stable, eth, other, copycat.
 
+Robinhood's Stock Token registry (api.robinhood.com/rhj/assets) is fetched first: every token it lists on chain 4663 is
+inserted or updated as kind 'stock', official = true, and wins its symbol outright.
+
 A symbol is cheap to copy (90 tokens call themselves SPCX, a dozen "USDC" are 18-decimal memecoins), so for the
 stock, stable and eth kinds only one token per symbol keeps the kind: the one in the most pools, earliest deployed
 on a tie. The rest become 'copycat' and no longer price anything. A stable must also sit in at least 20 pools: a lone
@@ -48,7 +51,7 @@ UPDATE tokens SET kind = CASE
     WHEN upper(symbol) IN ('USDG','USDC','USDT','DAI','PYUSD','USDE') THEN 'stable'
     WHEN upper(symbol) IN ('WETH','ETH') THEN 'eth'
     ELSE 'other' END
-WHERE kind IS DISTINCT FROM 'copycat' AND kind IS DISTINCT FROM CASE
+WHERE NOT official AND kind IS DISTINCT FROM 'copycat' AND kind IS DISTINCT FROM CASE
     WHEN symbol ~ '^[A-Z]{1,6}x$' OR lower(name) ~ '(xstock|securit(y|ies)|tokeni[sz]ed (stock|share|equity)|\mstock\M|\metf\M)' THEN 'stock'
     WHEN upper(symbol) IN ('USDG','USDC','USDT','DAI','PYUSD','USDE') THEN 'stable'
     WHEN upper(symbol) IN ('WETH','ETH') THEN 'eth'
@@ -57,27 +60,52 @@ WHERE kind IS DISTINCT FROM 'copycat' AND kind IS DISTINCT FROM CASE
 
 DEDUPE = """
 WITH cand AS (
-    SELECT t.token, t.kind, upper(t.symbol) sym,
+    SELECT t.token, t.kind, t.official, upper(t.symbol) sym,
            (SELECT count(*) FROM pools p WHERE p.token0 = t.token OR p.token1 = t.token) AS n_pools,
            (SELECT min(created_block) FROM pools p WHERE p.token0 = t.token OR p.token1 = t.token) AS first_block
     FROM tokens t WHERE t.kind IN ('stock', 'stable', 'eth', 'copycat') AND t.symbol IS NOT NULL
 ), ranked AS (
-    SELECT token, n_pools, row_number() OVER (PARTITION BY sym ORDER BY n_pools DESC, first_block ASC NULLS LAST, token) AS rn FROM cand
+    SELECT token, n_pools, official, row_number() OVER (PARTITION BY sym ORDER BY official DESC, n_pools DESC, first_block ASC NULLS LAST, token) AS rn FROM cand
 )
-UPDATE tokens t SET kind = CASE WHEN r.rn = 1 THEN CASE
+UPDATE tokens t SET kind = CASE WHEN r.official THEN 'stock' WHEN r.rn = 1 THEN CASE
         WHEN t.symbol ~ '^[A-Z]{1,6}x$' OR lower(t.name) ~ '(xstock|securit(y|ies)|tokeni[sz]ed (stock|share|equity)|\\mstock\\M|\\metf\\M)' THEN 'stock'
         WHEN upper(t.symbol) IN ('USDG','USDC','USDT','DAI','PYUSD','USDE') THEN CASE WHEN r.n_pools >= 20 THEN 'stable' ELSE 'copycat' END
         WHEN upper(t.symbol) IN ('WETH','ETH') THEN 'eth' ELSE 'other' END
     ELSE 'copycat' END
 FROM ranked r WHERE r.token = t.token
-  AND t.kind IS DISTINCT FROM CASE WHEN r.rn = 1 THEN CASE
+  AND t.kind IS DISTINCT FROM CASE WHEN r.official THEN 'stock' WHEN r.rn = 1 THEN CASE
         WHEN t.symbol ~ '^[A-Z]{1,6}x$' OR lower(t.name) ~ '(xstock|securit(y|ies)|tokeni[sz]ed (stock|share|equity)|\\mstock\\M|\\metf\\M)' THEN 'stock'
         WHEN upper(t.symbol) IN ('USDG','USDC','USDT','DAI','PYUSD','USDE') THEN CASE WHEN r.n_pools >= 20 THEN 'stable' ELSE 'copycat' END
         WHEN upper(t.symbol) IN ('WETH','ETH') THEN 'eth' ELSE 'other' END
     ELSE 'copycat' END;
 """
 
+REGISTRY = "https://api.robinhood.com/rhj/assets"
+
+def registry_tokens():
+    """(address, symbol, name, decimals) for every Robinhood Stock Token deployed on chain 4663; [] if the registry is unreachable."""
+    import json, urllib.request
+    try:
+        req = urllib.request.Request(REGISTRY, headers={"User-Agent": "Mozilla/5.0"})
+        d = json.load(urllib.request.urlopen(req, timeout=30))
+    except Exception as e:
+        log(f"registry unreachable: {str(e)[:80]}"); return []
+    items = d if isinstance(d, list) else next((v for v in d.values() if isinstance(v, list)), [])
+    out = []
+    for it in items:
+        if not isinstance(it, dict): continue
+        deps = it.get("deployments") or []
+        for dep in (deps if isinstance(deps, list) else [deps]):
+            if isinstance(dep, dict) and dep.get("chainId") == 4663 and dep.get("contractAddress"):
+                out.append((dep["contractAddress"], it.get("tokenSymbol"), it.get("tokenName"), it.get("tokenDecimals")))
+    return out
+
 with psycopg.connect(os.environ.get("DATABASE_URL", "postgresql://localhost/tethera"), autocommit=True) as conn, conn.cursor() as cur:
+    reg = registry_tokens(); log(f"registry: {len(reg)} official Stock Tokens on chain 4663")
+    for addr, sym, name, dec in reg:
+        cur.execute("""INSERT INTO tokens (token, symbol, name, decimals, kind, official) VALUES (%s,%s,%s,%s,'stock',true)
+                       ON CONFLICT (token) DO UPDATE SET symbol = EXCLUDED.symbol, name = EXCLUDED.name,
+                           decimals = coalesce(tokens.decimals, EXCLUDED.decimals), kind = 'stock', official = true""", (addr, sym, name, dec))
     cur.execute("""
         WITH busy AS (SELECT pool FROM swaps GROUP BY pool HAVING count(*) >= %s)
         SELECT DISTINCT t FROM (SELECT p.token0 t FROM pools p JOIN busy USING (pool)
