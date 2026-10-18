@@ -231,3 +231,18 @@ body:has(.hero.reveal) nav.on-image{opacity:0;animation:words-in 1.2s ease calc(
   .hero.reveal .clouds b{animation:wisp-in 1.6s ease calc(var(--rv-delay) + 1200ms) forwards}
   .hero.reveal .copy,.hero.reveal .caption,.hero.reveal .sound,nav.on-image{animation-delay:calc(var(--rv-delay) + 800ms)}
 }
+
+
+/* Shepherd's Warning archive */
+.issue h2.issue-title{font-size:clamp(30px,3.8vw,44px);margin-top:0}
+.issue .tblwrap{overflow-x:auto;margin:12px 0 18px}
+.issue-dl{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--fg-3);margin-top:14px}
+.issue-dl a{color:var(--fg-2)}
+ul.issues{list-style:none;margin:0;padding:0}
+.issue-row{border-top:1px solid var(--rule);padding:18px 0}
+.issue-head{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline}
+.issue-date{font-family:"IBM Plex Mono",monospace;font-size:14px;color:var(--fg-3)}
+.issue-open{font:inherit;font-family:"Grenze Gotisch",Georgia,serif;font-size:22px;background:none;border:0;padding:0;color:var(--fg);cursor:pointer;text-align:left}
+.issue-open:hover{color:var(--raddle)}
+.issue-sum{margin:6px 0 0;color:var(--fg-2)}
+.issue-body{margin-top:14px}

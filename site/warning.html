@@ -6,7 +6,7 @@
 <title>Shepherd's Warning · Tethera</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="site.css?v=20261018c">
+<link rel="stylesheet" href="site.css?v=20261018d">
 </head>
 <body>
 <nav class="wrap">
@@ -28,24 +28,17 @@
 </figure>
   </div>
 </section>
-<section class="s">
-  <div class="wrap inner2">
-    <div class="prose">
-      <h2>What's in an issue</h2>
-      <ul>
-        <li>The ten most crowded minutes of the week, with the pools and sides.</li>
-        <li>Which pools herded most, and which stayed calm all week.</li>
-        <li>How long herds lasted, and how many persisted past a minute.</li>
-        <li>An estimate of what herding cost the agents inside it.</li>
-        <li>One thing we learned about how agents behave on the chain.</li>
-      </ul>
-      <p>Plain language, real numbers, no sign-up wall. The first issue goes out the week of 21 October 2026. Past issues will be listed here.</p>
-    </div>
-    <div class="addr">
-      <code id="addr">TetheraLabs@proton.me</code>
-      <button id="copy" type="button">Copy</button>
-      <span class="note">Send a blank email to be told when the first issue goes out.</span>
-    </div>
+<section class="s" id="latest">
+  <div class="wrap">
+    <p class="eyebrow" id="latest-eyebrow">Latest issue</p>
+    <div class="prose issue" id="latest-issue"><p class="muted">Loading the latest issue…</p></div>
+  </div>
+</section>
+<section class="s" id="archive">
+  <div class="wrap">
+    <p class="eyebrow">Previous issues</p>
+    <ul class="issues" id="issue-list"><li class="muted">None yet. The first issue is above.</li></ul>
+    <p class="note">Each issue is published here in full, with its tables as CSV and the whole issue as PDF. A daily edition follows once there is enough history to make one honest.</p>
   </div>
 </section>
 <footer>
@@ -79,6 +72,33 @@
     function sel(){try{var r=document.createRange();r.selectNodeContents(a);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected';setTimeout(function(){b.textContent='Copy'},1600)}catch(e){}}
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,sel)}else{sel()}
   })}
+})();
+</script>
+<script>
+(function(){
+  function el(t,c,h){var e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e}
+  function fmt(d){try{return new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}catch(e){return d}}
+  fetch('warning/issues.json',{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){
+    var issues=j.issues||[]; var latest=issues[0]; var box=document.getElementById('latest-issue');
+    if(!latest){box.innerHTML='<p class="muted">The first issue goes out the week of 21 October 2026.</p>';return}
+    document.getElementById('latest-eyebrow').textContent=(latest.kind==='daily'?'Daily · ':'Issue · ')+fmt(latest.date);
+    fetch(latest.html,{cache:'no-store'}).then(function(r){return r.text()}).then(function(h){
+      box.innerHTML='<h2 class="issue-title">'+latest.title+'</h2>'+h+dl(latest);
+    });
+    var list=document.getElementById('issue-list'); var rest=issues.slice(1);
+    if(rest.length){list.innerHTML='';rest.forEach(function(i){
+      var li=el('li','issue-row');
+      li.innerHTML='<div class="issue-head"><span class="issue-date">'+fmt(i.date)+(i.kind==='daily'?' · daily':'')+'</span><button type="button" class="issue-open">'+i.title+'</button></div>'
+        +'<p class="issue-sum">'+(i.summary||'')+'</p>'+dl(i)+'<div class="issue-body prose" hidden></div>';
+      li.querySelector('.issue-open').addEventListener('click',function(){
+        var b=li.querySelector('.issue-body');
+        if(b.hidden&&!b.innerHTML){fetch(i.html,{cache:'no-store'}).then(function(r){return r.text()}).then(function(h){b.innerHTML=h;b.hidden=false})}
+        else b.hidden=!b.hidden;
+      });
+      list.appendChild(li);
+    })}
+  }).catch(function(){});
+  function dl(i){return '<p class="issue-dl"><a href="'+i.csv+'" download>CSV</a>'+(i.pdf?' · <a href="'+i.pdf+'" download>PDF</a>':'')+' · <a href="'+i.md+'" download>Text</a></p>'}
 })();
 </script>
 </body>

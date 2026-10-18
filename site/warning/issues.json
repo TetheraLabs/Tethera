@@ -1,0 +1,15 @@
+{
+ "issues": [
+  {
+   "slug": "2026-10-21",
+   "date": "2026-10-21",
+   "title": "Two wallets printed two billion dollars",
+   "summary": "In the week to 18 October, 38% of the dollar volume reported on Robinhood Chain was two wallets swapping in and out of their own zero-fee pools, settling nothing. Here is how the trick works, where it ran, and what was real.",
+   "kind": "weekly",
+   "html": "warning/2026-10-21.html",
+   "csv": "warning/2026-10-21.csv",
+   "pdf": "warning/2026-10-21.pdf",
+   "md": "warning/2026-10-21.md"
+  }
+ ]
+}
