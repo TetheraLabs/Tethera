@@ -30,7 +30,7 @@ ap.add_argument("--days", type=float, default=7); ap.add_argument("--top", type=
 ap.add_argument("--symbols", default="", help="comma-separated symbols to include regardless of rank")
 ap.add_argument("--out", default="reports/launch_audit.md")
 ap.add_argument("--nonce", action="store_true", help="fetch each wallet's on-chain transaction count (up to --nonce-max wallets per token)")
-ap.add_argument("--nonce-max", type=int, default=3000)
+ap.add_argument("--nonce-max", type=int, default=800)
 ap.add_argument("--new-only", action="store_true", help="rank only tokens whose first trade in our data falls inside the window (launches)")
 a = ap.parse_args()
 
@@ -155,6 +155,7 @@ def nonce_shares(conn, token, since, limit):
                     have[w] = int(v, 16)
                     conn.execute("INSERT INTO wallet_nonce (wallet, nonce) VALUES (%s, %s) ON CONFLICT (wallet) DO UPDATE SET nonce = EXCLUDED.nonce, fetched_at = now()", (w, have[w]))
             conn.commit()
+            time.sleep(0.6)   # leave the free endpoints to the follower; the audit is not in a hurry
     vals = [(have[w], seen[w]) for w in wallets if w in have]
     if not vals: return None
     # "born for this": the wallet's whole transaction count fits inside the swaps we saw it make in this token, plus two

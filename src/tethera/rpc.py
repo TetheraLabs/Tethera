@@ -212,6 +212,14 @@ class FailoverRpc(Rpc):
                 self._down[url] = time.time()
                 print(f"[rpc] {url.split('/')[2]} unreachable ({type(e).__name__}); marked down for {self.cooldown:.0f}s", flush=True)
                 continue
+            except RpcError as e:
+                self._last_by_url[url] = self._last
+                if getattr(e, "code", None) in (-32002, -32005) or "not available on your current plan" in str(e):
+                    last_err = e
+                    self._down[url] = time.time()
+                    print(f"[rpc] {url.split('/')[2]} cannot serve this request on its plan; marked down for {self.cooldown:.0f}s", flush=True)
+                    continue
+                raise
         assert last_err is not None
         raise last_err
 
@@ -221,5 +229,7 @@ def live_rpc(retries: int = 6) -> Rpc:
     eps: list[tuple[str, float]] = []
     if os.environ.get("PAID_RPC_URL"):
         eps.append((os.environ["PAID_RPC_URL"], 0.08))     # ~12 req/s, under the plan's 25 rps cap
+    for k in ("ALT_RPC_URL", "ALT_RPC_URL_2"):              # free-tier apps (Alchemy, QuickNode): a few req/s each
+        if os.environ.get(k): eps.append((os.environ[k], 0.15))
     eps.append((os.environ.get("RPC_URL", DEFAULT_RPC), 0.25))    # public endpoint: gentle
     return FailoverRpc(eps, retries=retries)
