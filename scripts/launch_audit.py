@@ -129,10 +129,11 @@ def nonce_shares(conn, token, since, limit):
     """Share of the token's (organic) wallets with an on-chain transaction count <= 2 and <= 5, fetching what is not cached."""
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
     from tethera.rpc import live_rpc
-    wallets = [r[0] for r in conn.execute("""
-        SELECT s.tx_from FROM swaps s JOIN pools p ON p.pool = s.pool
+    seen = dict(conn.execute("""
+        SELECT s.tx_from, count(*) FROM swaps s JOIN pools p ON p.pool = s.pool
         WHERE (p.token0 = %s OR p.token1 = %s) AND s.block_time >= %s AND NOT s.self_cancel
-        GROUP BY 1 ORDER BY count(*) DESC LIMIT %s""", (token, token, since, limit)).fetchall()]
+        GROUP BY 1 ORDER BY 2 DESC LIMIT %s""", (token, token, since, limit)).fetchall())
+    wallets = list(seen)
     if not wallets: return None
     have = dict(conn.execute("SELECT wallet, nonce FROM wallet_nonce WHERE wallet = ANY(%s) AND fetched_at > now() - interval '7 days'", (wallets,)).fetchall())
     todo = [w for w in wallets if w not in have]
@@ -149,9 +150,11 @@ def nonce_shares(conn, token, since, limit):
                     have[w] = int(v, 16)
                     conn.execute("INSERT INTO wallet_nonce (wallet, nonce) VALUES (%s, %s) ON CONFLICT (wallet) DO UPDATE SET nonce = EXCLUDED.nonce, fetched_at = now()", (w, have[w]))
             conn.commit()
-    vals = [have[w] for w in wallets if w in have]
+    vals = [(have[w], seen[w]) for w in wallets if w in have]
     if not vals: return None
-    return {"n": len(vals), "le2": sum(1 for v in vals if v <= 2) / len(vals), "le5": sum(1 for v in vals if v <= 5) / len(vals), "median": sorted(vals)[len(vals) // 2]}
+    # "born for this": the wallet's whole transaction count fits inside the swaps we saw it make in this token, plus two
+    born_for_this = sum(1 for n, k in vals if n <= k + 2) / len(vals)
+    return {"n": len(vals), "le2": sum(1 for n, _ in vals if n <= 2) / len(vals), "born_for_this": born_for_this, "median": sorted(n for n, _ in vals)[len(vals) // 2]}
 
 rows = []
 with psycopg.connect(DB) as conn:
@@ -165,7 +168,7 @@ with psycopg.connect(DB) as conn:
         r = dict(zip(cols, conn.execute(AUDIT, {"token": token, "since": since}).fetchone()))
         r.update(token=token, symbol=symbol, pools=pools, new_token=(r["first_seen"] - since).total_seconds() > 600)
         r["nonce"] = nonce_shares(conn, token, since, a.nonce_max) if a.nonce else None
-        if r["nonce"] and r["new_token"] and r["nonce"]["le2"] >= 0.5: r["one_trade_wallets"] = True
+        if r["nonce"] and r["new_token"] and r["nonce"]["born_for_this"] >= 0.5: r["one_trade_wallets"] = True
         r["verdict"] = verdict(r)
         if r.get("one_trade_wallets") and r["verdict"] in ("mixed", "organic"): r["verdict"] = "fresh-wallet driven"
         rows.append(r); log(f"{symbol:12} {r['swaps']:>8,} swaps {r['wallets']:>7,} wallets -> {r['verdict']} ({time.time()-t:.0f}s)")
@@ -176,20 +179,20 @@ L = [f"# Launch audit, {a.days:g} days to {datetime.now(timezone.utc):%Y-%m-%d %
      "Tokens ranked by swaps in their pools over the window. Shares are of organic (non-self-cancelling) swaps or wallets. "
      "\"Fresh\" = first swap anywhere in our hot table (which starts 10 Oct 2026) was in this token's window; \"one swap\" = the wallet's only swap in the hot table; "
      "\"born together\" = the largest batch of fresh wallets whose first swap fell in one ten-minute bucket.", "",
-     "| token | first seen (UTC) | pools | swaps | wallets | automated swaps | automated wallets | self-cancelling | printed $ | organic $ | fresh wallets | one-swap wallets | born together | top-10 share | only bought / only sold | nonce ≤ 2 / ≤ 5 (median) | verdict |",
+     "| token | first seen (UTC) | pools | swaps | wallets | automated swaps | automated wallets | self-cancelling | printed $ | organic $ | fresh wallets | one-swap wallets | born together | top-10 share | only bought / only sold | born for this / nonce ≤ 2 (median nonce) | verdict |",
      "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
 for r in rows:
     org = r["swaps"] - r["sc_swaps"]; ow = r["organic_wallets"] or 0
     L.append(f"| {r['symbol']} | {r['first_seen']:%d %b %H:%M}{'' if r['new_token'] else ' (before window)'} | {r['pools']} | {r['swaps']:,} | {r['wallets']:,} | {pct(r['auto_swaps'], org)} | {pct(r['auto_wallets'], r['wallets'])} | "
              f"{pct(r['sc_swaps'], r['swaps'])} | {usd(r['printed_usd'])} | {usd(r['organic_usd'])} | {pct(r['fresh_wallets'], ow) if r['new_token'] else 'n/a'} | {pct(r['one_swap_wallets'], ow)} | "
-             f"{(str(r['born_together'] or 0) + ' (' + (r['born_bucket'] or r['first_seen']).strftime('%d %b %H:%M') + ')') if r['new_token'] else 'n/a'} | {pct(r['top10_swaps'], org)} | {pct(r['only_bought'], ow)} / {pct(r['only_sold'], ow)} | {(f"{100*r['nonce']['le2']:.0f}% / {100*r['nonce']['le5']:.0f}% ({r['nonce']['median']})" if r.get('nonce') else '–')} | **{r['verdict']}** |")
+             f"{(str(r['born_together'] or 0) + ' (' + (r['born_bucket'] or r['first_seen']).strftime('%d %b %H:%M') + ')') if r['new_token'] else 'n/a'} | {pct(r['top10_swaps'], org)} | {pct(r['only_bought'], ow)} / {pct(r['only_sold'], ow)} | {(f"{100*r['nonce']['born_for_this']:.0f}% / {100*r['nonce']['le2']:.0f}% ({r['nonce']['median']})" if r.get('nonce') else '–')} | **{r['verdict']}** |")
 L += ["", "## Reading the columns", "",
       "- **automated**: the 7-day behavioural label; arbitrage and market-making bots count, so an established pool reads 60%+ and that is normal. On a day-old token it is a sign that bots arrived, not that people did.",
       "- **self-cancelling / printed**: swaps that go both ways in one transaction and settle nothing; the dollar figures need a USDG-quoted pool.",
       "- **fresh / one-swap / born together**: a launch bought by thousands of wallets that have never traded before, trade once, and appeared in the same ten minutes is a launch bought by one operator with a script. A launch bought by wallets with history is a launch bought by people.",
       "- **top-10 share**: ten wallets doing half the swaps is a concentrated market whatever the wallet count says.",
       "- **only bought / only sold**: a crowd that only ever bought is holders or bags; a crowd that only ever sold is an airdrop being dumped.",
-      "- **nonce ≤ 2 / ≤ 5**: the wallet's transaction count on the chain itself. At most two transactions means it was funded, traded once and stopped, whenever that happened; this column does not depend on where our own data starts.",
+      "- **born for this**: the wallet's on-chain transaction count is no more than the swaps we saw it make in this token plus two (a funding transfer and an approval). Its whole life is this token. **nonce ≤ 2**: funded, one trade, nothing else. Neither depends on where our own data starts.",
       "", "Not in this version: wallets funded from the same source at the same time (needs each wallet's first incoming transfer)."]
 os.makedirs(os.path.dirname(a.out), exist_ok=True); open(a.out, "w").write("\n".join(L) + "\n")
 log(f"wrote {a.out} ({len(rows)} tokens, {time.time()-t0:.0f}s)")

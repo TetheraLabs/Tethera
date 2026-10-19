@@ -79,8 +79,10 @@ def main():
     cells["kind"] = cells.pool.map(kinds).fillna("unknown")
     # price before, 1h after, 24h after, via per-pool as-of merges
     out = []
+    px_by_pool = {pool: g_.sort_values("minute") for pool, g_ in px.groupby("pool", sort=False)}   # one pass, not one scan per pool
     for pool, g in cells.groupby("pool", sort=False):
-        series = px[px.pool == pool].sort_values("minute")
+        series = px_by_pool.get(pool)
+        if series is None: continue
         if len(series) < 3: continue
         s_min = series.minute.values; s_px = series.px_last.values
         g = g.sort_values("minute")
