@@ -18,15 +18,20 @@ log = lambda *a: print(time.strftime("%m-%d %H:%M:%S"), *a, flush=True)
 
 FEATURE_CTES = """
 WITH s AS (
-    SELECT tx_from AS w, pool, block_number, log_index, block_time, direction,
+    SELECT tx_from AS w, pool, block_number, log_index, block_time, direction, tx_hash,
            extract(epoch FROM block_time) AS t,
            CASE WHEN amount0 > 0 THEN amount0 ELSE amount1 END AS amount_in,
            amount0
     FROM {source}
 ),
+-- one transaction is one trade: an aggregator routes a person's single swap through several pools in one block,
+-- so timing is measured between transactions, never between the legs of one (labelling change 4, 19 Oct 2026)
+tx AS (
+    SELECT w, tx_hash, min(block_number) AS block_number, min(log_index) AS log_index, min(t) AS t FROM s GROUP BY 1, 2
+),
 ordered AS (
     SELECT *, t - lag(t) OVER (PARTITION BY w ORDER BY block_number, log_index) AS gap
-    FROM s
+    FROM tx
 ),
 per_wallet AS (
     SELECT w, count(*) AS n_swaps, count(DISTINCT pool) AS n_pools,
@@ -43,9 +48,9 @@ gapstats AS (
 ),
 blocks AS (
     SELECT w,
-           count(*) FILTER (WHERE npools > 1) AS multi_pool_blocks,
-           count(*) FILTER (WHERE nswaps > 1) AS multi_swap_blocks
-    FROM (SELECT w, block_number, count(DISTINCT pool) AS npools, count(*) AS nswaps FROM s GROUP BY 1, 2) b
+           count(*) FILTER (WHERE npools > 1 AND ntx > 1) AS multi_pool_blocks,
+           count(*) FILTER (WHERE ntx > 1) AS multi_swap_blocks
+    FROM (SELECT w, block_number, count(DISTINCT pool) AS npools, count(DISTINCT tx_hash) AS ntx FROM s GROUP BY 1, 2) b
     GROUP BY w
 ),
 reaction AS (
@@ -56,11 +61,14 @@ reaction AS (
     GROUP BY a.w
 ),
 roundtrip AS (
+    -- a round trip is a buy in one transaction and a sell in a later one (or the reverse), same pool, within 30 s;
+    -- the legs of one routed transaction never count
     SELECT w, count(*) AS round_trips FROM (
         SELECT w, pool, direction, t,
                lag(direction) OVER (PARTITION BY w, pool ORDER BY block_number, log_index) AS pd,
                lag(t)         OVER (PARTITION BY w, pool ORDER BY block_number, log_index) AS pt
-        FROM s) x
+        FROM (SELECT DISTINCT ON (w, tx_hash, pool) w, tx_hash, pool, direction, t, block_number, log_index
+              FROM s ORDER BY w, tx_hash, pool, block_number, log_index) txp) x
     WHERE pd IS NOT NULL AND pd <> direction AND t - pt <= 30
     GROUP BY w
 ),
