@@ -54,23 +54,6 @@ with psycopg.connect(DB) as conn:
         FROM swaps s JOIN pools p ON p.pool = s.pool LEFT JOIN tokens t0 ON t0.token = p.token0 LEFT JOIN tokens t1 ON t1.token = p.token1
         WHERE s.self_cancel AND s.block_time >= %s AND (t0.symbol = 'USDG' OR t1.symbol = 'USDG')""", (since,)).fetchone()[0]
 
-# 2b. launches on the Pons curve in the window (seen before they ever reach Uniswap)
-with psycopg.connect(DB) as conn:
-    pons = conn.execute("""
-        WITH l AS (SELECT * FROM launches WHERE block_time >= %s),
-             c AS (SELECT l.token, c.trader, c.side, c.quote_amount, c.block_time, l.block_time AS launched, l.deployer FROM l JOIN curve_trades c ON c.curve = l.curve),
-             per AS (SELECT token, trader, sum(quote_amount) FILTER (WHERE side = 'buy') AS bought FROM c GROUP BY 1, 2),
-             agg AS (SELECT c.token, count(*) AS trades, count(DISTINCT trader) AS buyers, sum(quote_amount) FILTER (WHERE side = 'buy') / 1e18 AS raised,
-                            count(DISTINCT trader) FILTER (WHERE block_time < launched + interval '60 seconds') AS first_minute_buyers,
-                            count(*) FILTER (WHERE trader = deployer) AS deployer_trades FROM c GROUP BY 1),
-             top AS (SELECT token, max(bought) AS top1 FROM per GROUP BY 1)
-        SELECT coalesce(t.symbol, left(l.token, 10)), to_char(l.block_time AT TIME ZONE 'UTC', 'HH24:MI'), l.graduated_time IS NOT NULL,
-               coalesce(a.trades, 0), coalesce(a.buyers, 0), round(coalesce(a.raised, 0)::numeric, 2), coalesce(a.first_minute_buyers, 0), coalesce(a.deployer_trades, 0),
-               CASE WHEN a.raised > 0 THEN round(100.0 * top.top1 / 1e18 / a.raised) END
-        FROM l LEFT JOIN tokens t ON t.token = l.token LEFT JOIN agg a ON a.token = l.token LEFT JOIN top ON top.token = l.token
-        ORDER BY coalesce(a.raised, 0) DESC LIMIT %s""", (since, a.top)).fetchall()
-    n_launches, n_grad = conn.execute("SELECT count(*), count(*) FILTER (WHERE graduated_time IS NOT NULL) FROM launches WHERE block_time >= %s", (since,)).fetchone()
-
 # 3. rows for the two tables
 def row(r):
     v = r.get("verdict", "").strip("*")
@@ -89,11 +72,7 @@ lines = ["---", f"date: {a.date}", f"title: {title}",
          f"| Swaps | {swaps:,} |", f"| Wallets | {wallets:,} |", f"| Swaps by automated wallets | {100*auto_swaps/max(swaps-sc,1):.0f}% |",
          f"| One-sided herd minutes (15+ automated wallets one way) | {herds or 0:,} |", f"| Largest herd | {peak or 0:,} automated wallets one way in one minute |",
          f"| Self-cancelling swaps | {sc:,} |", f"| Self-cancelling USDG volume | ${printed/1e6:,.1f}M |",
-         "", "# Launched on Pons today", "",
-         f"{n_launches:,} tokens were launched on the Pons curve in the last day; {n_grad:,} graduated to Uniswap. The busiest by ETH raised, before they reached a pool anywhere a Uniswap reader can see:", "",
-         "| token | launched (UTC) | graduated | curve trades | buyers | ETH raised | buyers in first minute | deployer's own trades | top buyer share |", "|---|---|---|---|---|---|---|---|---|"]
-lines += [f"| {r[0]} | {r[1]} | {'yes' if r[2] else 'no'} | {r[3]:,} | {r[4]:,} | {r[5]} | {r[6]} | {r[7]} | {str(r[8]) + '%' if r[8] is not None else '–'} |" for r in pons] or ["| (none) | | | | | | | | |"]
-lines += ["", "# Launched today on Uniswap, audited", "",
+         "", "# Launched today, audited", "",
          "Tokens whose first trade on Uniswap fell inside the day, ranked by swaps. Automated = the seven-day behavioural label. Fresh = the wallet's first swap in our data was in this token. Born together = the largest batch of fresh wallets that first appeared in the same ten minutes. Top-10 = the share of swaps from the ten busiest wallets. Born for this = wallets whose whole on-chain life fits inside this token, from their transaction count.", "",
          "| token | first seen (UTC) | swaps | wallets | automated | fresh wallets | born together | top-10 share | born for this / one-trade | verdict |", "|---|---|---|---|---|---|---|---|---|---|"]
 lines += ["| " + " | ".join(r) + " |" for r in launch_rows] or ["| (no launch reached 300 swaps today) | | | | | | | | | |"]

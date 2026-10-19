@@ -1,4 +1,5 @@
-"""Follow the Pons launchpad: launches, bonding-curve buys and sells, and graduations.
+"""Study tool, not part of the product: read the Pons launchpad's launches, bonding-curve buys and sells, and graduations,
+to see what the first minutes of a launch look like before a token reaches Uniswap. Run by hand for a block range; not a service.
 
 Before a token graduates to Uniswap it trades on its own curve contract, which no Uniswap swap reader sees. This follower
 reads the Pons events straight from the chain into `launches` and `curve_trades`, so the launch audit covers a token's
