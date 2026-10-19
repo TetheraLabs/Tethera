@@ -31,6 +31,7 @@ ap.add_argument("--symbols", default="", help="comma-separated symbols to includ
 ap.add_argument("--out", default="reports/launch_audit.md")
 ap.add_argument("--nonce", action="store_true", help="fetch each wallet's on-chain transaction count (up to --nonce-max wallets per token)")
 ap.add_argument("--nonce-max", type=int, default=3000)
+ap.add_argument("--new-only", action="store_true", help="rank only tokens whose first trade in our data falls inside the window (launches)")
 a = ap.parse_args()
 
 CANDIDATES = """
@@ -48,7 +49,7 @@ WITH tok AS (
     FROM pl JOIN pool_minutes m ON m.pool = pl.pool AND m.minute >= %(since)s
     GROUP BY 1, 2
 )
-(SELECT token, symbol, pools, swaps, first_seen FROM act WHERE swaps >= %(min_swaps)s ORDER BY swaps DESC LIMIT %(top)s)
+(SELECT token, symbol, pools, swaps, first_seen FROM act WHERE swaps >= %(min_swaps)s AND (NOT %(new_only)s OR first_seen > %(since)s + interval '10 minutes') ORDER BY swaps DESC LIMIT %(top)s)
 UNION
 (SELECT token, symbol, pools, swaps, first_seen FROM (
     SELECT act.*, row_number() OVER (PARTITION BY upper(symbol) ORDER BY swaps DESC) AS rn FROM act WHERE upper(symbol) = ANY(%(symbols)s)) x
@@ -159,7 +160,7 @@ def nonce_shares(conn, token, since, limit):
 rows = []
 with psycopg.connect(DB) as conn:
     conn.execute("SET work_mem = '512MB'"); conn.execute("SET statement_timeout = '30min'")
-    cands = conn.execute(CANDIDATES, {"since": since, "min_swaps": a.min_swaps, "symbols": symbols, "top": a.top}).fetchall()
+    cands = conn.execute(CANDIDATES, {"since": since, "min_swaps": a.min_swaps, "symbols": symbols, "top": a.top, "new_only": a.new_only}).fetchall()
     log(f"{len(cands)} candidate tokens ({time.time()-t0:.0f}s)")
     for token, symbol, pools, swaps, first_seen in cands:
         t = time.time()
