@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from tethera.audit import audit_token
 
 from . import db, signal
 from .rpc import live_rpc
@@ -263,4 +264,17 @@ def pool_profile(pool: str = POOL_PATH):
     out = _pool(pool)
     if out is None:
         raise HTTPException(status_code=404, detail="unknown pool")
+    return out
+
+
+TOKEN_PATH = Path(..., min_length=42, max_length=42, pattern="^0x[0-9a-fA-F]{40}$", description="Token contract address")
+DAYS = Query(7, ge=1, le=30, description="Window in days")
+
+
+@app.get("/v1/token/{address}")
+def token_audit(address: str = TOKEN_PATH, days: float = DAYS):
+    """Launch audit for one token: how much of its activity was real, who was there, and a verdict. Cached for 30 minutes."""
+    out = audit_token(address, days=days)
+    if out is None:
+        raise HTTPException(status_code=404, detail="unknown token")
     return out

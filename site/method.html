@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Method · Tethera</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="stylesheet" href="site.css?v=20261018d">
+</head>
+<body>
+<nav class="wrap">
+  <a class="wordmark" href="index.html"><img class="mark" src="logo-collie-dark.png" alt="" width="674" height="405">Tethera</a>
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
+  <ul><li><a href="herding.html">What is herding?</a></li><li><a href="why.html">Why it matters</a></li><li><a href="how.html">How it works</a></li><li><a href="products.html">Products</a></li><li><a href="method.html" aria-current="page">Method</a></li><li><a href="stats.html">Stats</a></li><li><a href="warning.html" aria-current=page>Shepherd's Warning</a></li><li><a href="about.html">About</a></li></ul>
+</nav>
+<header class="pagehead">
+  <div class="wrap">
+    <p class="eyebrow">Method</p>
+    <h1>How we classify trading on Robinhood Chain.</h1>
+    <p class="lede">The rule book, in full, with its change log. The code that implements it is public, and every published number can be re-run from these rules by anyone with a node.</p>
+  </div>
+</header>
+<section class="s">
+  <div class="wrap">
+    <div class="prose issue">
+<p>This is the rule book. The code that implements it is in this repository (<code>scripts/build_features.py</code>, <code>config/labels.toml</code>, <code>sql/017_self_cancelling.sql</code>, <code>scripts/fetch_token_meta.py</code>, <code>scripts/launch_audit.py</code>). Every number Tethera publishes is produced by these rules and can be re-run by anyone with a node and the code. Changes to the rules are listed at the end with their dates.</p>
+<h2>1. What we read</h2>
+<p>Every Uniswap v2, v3 and v4 swap on Robinhood Chain (chain 4663), decoded within seconds of the block, with the transaction's sender. We keep the last seven days hot and the full history since mainnet in an archive. Nothing is sampled.</p>
+<h2>2. What we remove before counting anything</h2>
+<ul><li><b>Self-cancelling trades.</b> A transaction that swaps both ways in one pool, with both token amounts netting to under 1% of the gross. Under Uniswap v4's flash accounting such a transaction settles nothing. These swaps stay in our tables with a flag and are excluded from every aggregate, label, herd count and published volume. We report their size separately.</li><li><b>Copycat tokens.</b> A symbol is cheap to copy. For the stock, stable and eth kinds, one token per symbol keeps the kind: the one in the most pools, earliest deployed on a tie. The rest are marked copies. A stablecoin must also sit in at least 20 pools. For stocks, Robinhood's own Stock Token registry is the authority: only its contracts count as official.</li><li><b>Volume bots.</b> Wallets with no net position (net flow under 10% of gross), at least 80% of their swaps in one pool, and a fixed daily budget (daily volume coefficient of variation under 0.35 once active three days or more), over 20 or more swaps. They are automated, but they are not a herd, so they are excluded from herd counts.</li></ul>
+<h2>3. What makes a wallet "automated"</h2>
+<p>A wallet is judged on its last seven days of swaps, self-cancelling trades removed, and only if it has at least five of them. <b>One transaction is one trade</b>: an aggregator routes a person's single swap through several pools in one block, so timing is measured between transactions, never between the legs of one.</p>
+<p>Seven signals:</p>
+<div class="tblwrap"><table class="stats"><thead><tr><th>signal</th><th>fires when</th><th>needs</th></tr></thead><tbody><tr><td>several pools in one block</td><td>the wallet traded in more than one pool in one block, in separate transactions, at least once</td><td></td></tr><tr><td>sub-second gap</td><td>the shortest gap between two of its transactions is under 1.0 second</td><td></td></tr><tr><td>metronomic</td><td>its gaps between transactions are regular: coefficient of variation under 0.5</td><td>10+ swaps</td></tr><tr><td>fast round trips</td><td>at least 3 buy-then-sell (or sell-then-buy) in the same pool within 30 seconds, in separate transactions</td><td></td></tr><tr><td>computed sizes</td><td>at most 5% of its amounts are round numbers</td><td>10+ swaps</td></tr><tr><td>reactive</td><td>at least half of its swaps land within two blocks after another wallet's swap in the same pool</td><td>10+ swaps</td></tr><tr><td>persistent</td><td>20+ swaps over a span of at least 30 minutes with no idle stretch longer than 10 minutes</td><td></td></tr></tbody></table></div>
+<p>The first two signals count as one, because several pools in one block implies a zero gap (81% overlap in calibration). A wallet is <b>automated</b> when three or more independent signals fire. Nothing about the wallet's name, registry entry or contract code is used to make the label.</p>
+<h2>4. What a herd is</h2>
+<p>A <b>busy minute</b> is one pool, one minute, with fifteen or more automated wallets (volume bots excluded) on one side. A <b>herd</b> is a busy minute where the other side has at most 15% of that number. Two-sided busy minutes are usually arbitrage keeping the pool in line with other markets; they are counted and reported, but they are not herds.</p>
+<h2>5. What checks the labels</h2>
+<ul><li><b>The ERC-8004 agent registry is the test set, not the label.</b> Registered agents that trade are scored against the labels; they are never used to make them. Registered agents barely trade (57 of 8,792 at the time of writing), which is why a registry alone would miss almost every bot.</li><li><b>Calibration after every full run</b>: for each signal, how often it fires among judged wallets, how often it fires alone on wallets sitting exactly on the threshold, and the overlap between signals. The current report is published with the weekly letter.</li><li><b>Reproduction.</b> Pool ids, transaction ids and the window are given with every published number.</li></ul>
+<h2>6. The launch audit</h2>
+<p>For a token over a window, in addition to the above: the share of wallets whose first swap in our data fell in this token's window; the share with exactly one swap; the largest batch of such wallets whose first swap landed in one ten-minute bucket; the ten busiest wallets' share of swaps; the share that only ever bought or only ever sold; and, from the chain itself, the share of wallets whose total transaction count fits inside the swaps we saw them make here plus two (a funding transfer and an approval), which we call <b>born for this</b>. Verdicts: organic, mixed, automated, fresh-wallet driven, printed. The rules for each are in the code and in the audit's own notes.</p>
+<h2>7. Known limits</h2>
+<ul><li>A wallet with fewer than five swaps in seven days is not judged. Launch bots that trade once are caught by the launch audit's fresh-wallet columns, not by the label.</li><li>Most automated labels sit exactly on the three-signal threshold, so rule changes move the count. We publish the count before and after every change.</li><li>A slow bot, one trade an hour, trips nothing.</li><li>"First swap in our data" is measured from 10 October 2026 until the archive is indexed; the on-chain transaction count does not have that limit.</li><li>The test set is small. We are building a larger labelled set of known bots and known human flows and will publish precision and recall when it exists.</li></ul>
+<h2>8. Change log</h2>
+<ul><li><b>14 Oct 2026.</b> First rules: seven signals, three to label, five swaps minimum, seven-day window.</li><li><b>17 Oct 2026.</b> Volume-bot filter added; volume bots excluded from herd counts.</li><li><b>18 Oct 2026.</b> Several-pools-in-one-block and sub-second-gap count as one signal (81% overlap). Self-cancelling trades flagged and excluded everywhere. One canonical token per symbol; stables need 20 pools; Robinhood's registry decides which stock tokens are official. The ten-minute job judges active wallets on the same seven-day window as the weekly run (it had been judging on six hours).</li><li><b>19 Oct 2026.</b> One transaction is one trade: timing and round-trip signals no longer fire on the legs of a routed swap. Expected effect: of 11,502 automated wallets, 6,949 lose the label (14% of automated swaps); the automated share of all swaps goes from about 43% to about 37%. The before-and-after figures are published with the next weekly letter.</li></ul>
+    <p class="muted">Source: <a href="https://github.com/TetheraLabs/Tethera/blob/main/docs/method.md">docs/method.md</a> in the repository, kept identical to this page.</p>
+    </div>
+  </div>
+</section>
+<footer>
+  <div class="wrap">
+    <span>Tethera Labs · Robinhood Chain · <a href="https://github.com/TetheraLabs/Tethera">github.com/TetheraLabs</a></span>
+    <span>Illustrations: Tethera Labs, 2026</span>
+  </div>
+</footer>
+<script>
+(function(){
+  var m=document.querySelector('nav .menu'),u=document.querySelector('nav ul');
+  if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)})}
+  var HAS_AUDIO=false;
+  var sb=document.getElementById('sound');
+  if(sb&&HAS_AUDIO){
+    sb.hidden=false;
+    var wind=new Audio('wind.mp3'),sheep=new Audio('sheep.mp3'),bark=new Audio('bark.mp3');
+    wind.loop=true;sheep.loop=true;wind.volume=0;sheep.volume=0;bark.volume=.28;
+    var on=false,timer=null;
+    function fade(el,to,ms){var from=el.volume,t0=Date.now();(function step(){var k=Math.min(1,(Date.now()-t0)/ms);el.volume=from+(to-from)*k;if(k<1)requestAnimationFrame(step);else if(to===0)el.pause()})()}
+    function schedBark(){timer=setTimeout(function(){if(on){bark.currentTime=0;bark.play().catch(function(){})}schedBark()},25000+Math.random()*35000)}
+    sb.addEventListener('click',function(){
+      on=!on;sb.classList.toggle('on',on);sb.setAttribute('aria-pressed',on);
+      if(on){wind.play().catch(function(){});sheep.play().catch(function(){});fade(wind,.35,1800);fade(sheep,.22,2600);schedBark()}
+      else{fade(wind,0,900);fade(sheep,0,900);clearTimeout(timer)}
+    });
+  }
+  var b=document.getElementById('copy'),a=document.getElementById('addr');
+  if(b&&a){b.addEventListener('click',function(){
+    var t=a.textContent.trim(),done=function(){b.textContent='Copied';setTimeout(function(){b.textContent='Copy'},1600)};
+    function sel(){try{var r=document.createRange();r.selectNodeContents(a);var s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected';setTimeout(function(){b.textContent='Copy'},1600)}catch(e){}}
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(done,sel)}else{sel()}
+  })}
+})();
+</script>
+<script>
+(function(){
+  function el(t,c,h){var e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e}
+  function fmt(d){try{return new Date(d+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}catch(e){return d}}
+  fetch('warning/issues.json',{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){
+    var issues=j.issues||[]; var latest=issues[0]; var box=document.getElementById('latest-issue');
+    if(!latest){box.innerHTML='<p class="muted">The first issue goes out the week of 21 October 2026.</p>';return}
+    document.getElementById('latest-eyebrow').textContent=(latest.kind==='daily'?'Daily · ':'Issue · ')+fmt(latest.date);
+    fetch(latest.html,{cache:'no-store'}).then(function(r){return r.text()}).then(function(h){
+      box.innerHTML='<h2 class="issue-title">'+latest.title+'</h2>'+h+dl(latest);
+    });
+    var list=document.getElementById('issue-list'); var rest=issues.slice(1);
+    if(rest.length){list.innerHTML='';rest.forEach(function(i){
+      var li=el('li','issue-row');
+      li.innerHTML='<div class="issue-head"><span class="issue-date">'+fmt(i.date)+(i.kind==='daily'?' · daily':'')+'</span><button type="button" class="issue-open">'+i.title+'</button></div>'
+        +'<p class="issue-sum">'+(i.summary||'')+'</p>'+dl(i)+'<div class="issue-body prose" hidden></div>';
+      li.querySelector('.issue-open').addEventListener('click',function(){
+        var b=li.querySelector('.issue-body');
+        if(b.hidden&&!b.innerHTML){fetch(i.html,{cache:'no-store'}).then(function(r){return r.text()}).then(function(h){b.innerHTML=h;b.hidden=false})}
+        else b.hidden=!b.hidden;
+      });
+      list.appendChild(li);
+    })}
+  }).catch(function(){});
+  function dl(i){return '<p class="issue-dl"><a href="'+i.csv+'" download>CSV</a>'+(i.pdf?' · <a href="'+i.pdf+'" download>PDF</a>':'')+' · <a href="'+i.md+'" download>Text</a></p>'}
+})();
+</script>
+</body>
+</html>
