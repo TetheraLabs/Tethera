@@ -28,3 +28,7 @@ Services are restarted through the host's service manager; the followers and the
 **Health.** `curl localhost:18790/health` returns the lag in seconds and blocks, the endpoint in use and the last health-check result. `data/alerts.log` holds every problem the check has seen; a desktop notification is shown at most once per problem per hour.
 
 **MCP.** The crowding signal is also an MCP server over stdio for trading agents: `PYTHONPATH=__REPO__/src __REPO__/.venv/bin/python -m tethera.mcp_server`, with `__REPO__` the checkout path. Tools: `crowding`, `herds`, `wallet`, `health`. The client configuration snippet is in `docs/api.md`.
+
+## Tests
+
+`.venv/bin/python -m pytest -q tests` runs against the live stack on the host: every public endpoint answers with the keys the docs promise, the data obeys the rules on the Method page (one token per symbol, labels need five swaps and three signals, flagged trades net to nothing, pool minutes exclude them), the follower is current, the publisher round-trips an issue to HTML, CSV and PDF, and the MCP tools answer. Run it after any change to the API, the labelling or the publisher.
