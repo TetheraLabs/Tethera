@@ -8,12 +8,14 @@ of each key is stored). Over the limit the answer is 429 with a Retry-After head
 import time, hashlib, json, os, threading, time
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, Path, Query, Request
-from fastapi.responses import JSONResponse
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Path, Query, Request, Body
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from tethera.audit import audit_token
 
-from . import db, signal
+from . import db, signal, alerts, keys
 from .rpc import live_rpc
 
 HEALTH_LOG = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "health.jsonl")
@@ -21,9 +23,17 @@ ANON_RPM, ANON_BURST = 30, 10
 KEY_CACHE_S = 60          # how long a key's limit is remembered before the table is read again
 UNLIMITED = {"/health", "/v1/health", "/docs", "/openapi.json", "/redoc"}
 
-app = FastAPI(title="Tethera", version="0.4", description="Crowding signal for automated traders on Robinhood Chain.")
-# the site reads the API from the browser; the API is public and read-only, so any origin may call it
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"], max_age=3600)
+
+@asynccontextmanager
+async def _lifespan(app):
+    alerts.start()
+    async with _mcp_app.router.lifespan_context(_mcp_app):
+        yield
+
+
+app = FastAPI(title="Tethera", version="0.5", description="Crowding signal for automated traders on Robinhood Chain.", lifespan=_lifespan)
+# the site reads the API from the browser; the API is public, so any origin may call it
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET", "POST"], allow_headers=["*"], max_age=3600)
 
 
 class Buckets:
@@ -67,7 +77,7 @@ def key_limit(key: str) -> int | None:
     rpm = None
     try:
         with db.connect() as conn:
-            row = conn.execute("SELECT requests_per_minute FROM api_keys WHERE key_hash = %s AND NOT disabled", (h,)).fetchone()
+            row = conn.execute("SELECT requests_per_minute FROM api_keys WHERE key_hash = %s AND NOT disabled AND (expires_at IS NULL OR expires_at > now())", (h,)).fetchone()
             rpm = row[0] if row else None
     except Exception:  # noqa: BLE001  (database down: treat as anonymous rather than fail)
         rpm = None
@@ -82,6 +92,8 @@ def key_limit(key: str) -> int | None:
 async def rate_limit(request: Request, call_next):
     if request.url.path in UNLIMITED:
         return await call_next(request)
+    if request.scope["path"] == "/mcp":          # the MCP app lives under /mcp/; spare clients a redirect that drops the POST body
+        request.scope["path"] = "/mcp/"; request.scope["raw_path"] = b"/mcp/"
     key = request.headers.get("x-tethera-key")
     rpm = key_limit(key) if key else None
     if rpm:
@@ -136,6 +148,11 @@ def _crowding(pool: str, direction: str, size: float | None):
         raise HTTPException(500, str(e)[:200])
     out["size"] = size      # accepted now; a later version will say how much of the window this size is
     return out
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    return (fwd.split(",")[0].strip() if fwd else None) or (request.client.host if request.client else "?")
 
 
 def _herds(min_wallets: int):
@@ -282,6 +299,65 @@ def token_audit(address: str = TOKEN_PATH, days: float = DAYS):
     return out
 
 
+VERDICT_COLOURS = {"organic": "#2f7d4f", "mixed": "#6b7280", "automated": "#b45309", "automated, concentrated": "#b45309",
+                   "fresh-wallet driven": "#b91c1c", "printed": "#7f1d1d", "no activity": "#9ca3af"}
+
+
+@app.get("/v1/token/{address}/badge.svg", include_in_schema=True)
+def token_badge(address: str = TOKEN_PATH):
+    """An SVG badge with the token's seven-day verdict, for a project page or a listing. Links back to the check page."""
+    a = audit_token(address, days=7)
+    verdict = a["verdict"] if a else "unknown"
+    right = verdict if not a else f"{verdict} · {round(100 * (a.get('automated_swap_share') or 0))}% software"
+    colour = VERDICT_COLOURS.get(verdict, "#9ca3af")
+    lw, rw = 118, 7 * len(right) + 16
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{lw + rw}" height="22" role="img" aria-label="Tethera: {right}">
+<title>Tethera real-activity check: {right}</title>
+<rect width="{lw}" height="22" rx="4" fill="#1f2937"/><rect x="{lw}" width="{rw}" height="22" fill="{colour}"/><rect x="{lw - 4}" width="8" height="22" fill="{colour}"/>
+<g fill="#fff" font-family="ui-monospace, Menlo, monospace" font-size="11">
+<text x="8" y="15">tethera · real activity</text><text x="{lw + 8}" y="15">{right}</text></g></svg>"""
+    return Response(svg, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=1800"})
+
+
+@app.get("/v1/alerts")
+def herd_alerts(after_id: int = Query(0, ge=0, description="Return alerts with an id above this; 0 for the most recent"), limit: int = Query(200, ge=1, le=1000)):
+    """One-sided herd minutes as they are detected, newest last. Poll with the returned last_id, or use /v1/alerts/stream."""
+    return alerts.after(after_id, limit)
+
+
+@app.get("/v1/alerts/stream")
+async def herd_alert_stream(request: Request):
+    """Server-sent events: one `herd` event per one-sided herd minute, with increasing ids. Send Last-Event-ID to resume."""
+    try: after_id = int(request.headers.get("last-event-id", "0"))
+    except ValueError: after_id = 0
+    return StreamingResponse(alerts.astream(after_id), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/v1/keys/tiers")
+def key_tiers():
+    """Rate limits for anonymous, free-key and paid callers, and how to buy a paid key."""
+    return keys.tiers()
+
+
+@app.post("/v1/keys", status_code=201)
+def create_key(request: Request, label: str = Body("", embed=True, max_length=64)):
+    """Create a free API key (120 requests a minute, no expiry). Three a day per address. No account, no email."""
+    out = keys.create_free(_client_ip(request), label)
+    if out is None:
+        raise HTTPException(429, "three free keys a day per address; use the ones you have, or buy a paid tier")
+    return out
+
+
+@app.post("/v1/keys/paid")
+def create_paid_key(tx_hash: str = Body(..., embed=True), label: str = Body("", embed=True, max_length=64)):
+    """Turn a USDG payment to the treasury into a 30-day key at the tier the amount buys. See /v1/keys/tiers."""
+    status, body = keys.create_paid(tx_hash, label)
+    if status >= 400:
+        raise HTTPException(status, body["error"])
+    return JSONResponse(body, status_code=status)
+
+
 # ---- series and the live flock, for the site's drawings. Cached in-process: these aggregate a million rows.
 _series_cache = {}
 
@@ -360,3 +436,11 @@ def _warm_series():
     threading.Thread(target=loop, daemon=True).start()
 
 _warm_series()
+
+# ---- the same tools over the Model Context Protocol, at /mcp (streamable HTTP, stateless, no key needed)
+from . import mcp_server  # noqa: E402  (imports from this module; placed last so its names exist)
+from mcp.server.transport_security import TransportSecuritySettings  # noqa: E402
+# the API is reached through a tunnel by hostname, so the library's local-host check (DNS-rebinding protection for servers on 127.0.0.1) is off
+_mcp_app = mcp_server.mcp.streamable_http_app(streamable_http_path="/", stateless_http=True, json_response=True,
+                                               transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
+app.mount("/mcp", _mcp_app)

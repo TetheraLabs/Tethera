@@ -1,6 +1,6 @@
 # Tethera API
 
-A pre-trade crowding check for automated traders on Robinhood Chain. Four read-only endpoints, JSON, no authentication needed. The same signal is available as an MCP server for agents.
+A pre-trade crowding check for automated traders on Robinhood Chain. Read-only endpoints, JSON, no authentication needed; keys raise the rate limit. The same signal is available as an MCP server for agents.
 
 Base path: `/v1/`. The interactive schema is at `/docs`.
 
@@ -198,3 +198,36 @@ The same calls (`crowding`, `herds`, `wallet`, `health`) as MCP tools over stdio
 ```
 
 The MCP server reads the database directly, so it runs on, or with network access to, the machine that hosts it.
+
+## GET /v1/token/{address}/badge.svg
+
+An SVG badge with the token's seven-day verdict and automated share, cached 30 minutes. For a project page or a listing:
+
+```html
+<a href="https://tetheralabs.com/check.html#0x..."><img src="https://api.tetheralabs.com/v1/token/0x.../badge.svg" alt="Tethera real-activity check"></a>
+```
+
+## GET /v1/alerts and GET /v1/alerts/stream
+
+One-sided herd minutes as they are detected: 15+ automated wallets one way in one pool in one minute, the other side at most 15% of that, volume bots and self-cancelling swaps excluded. Each alert has an increasing `id`, the `minute`, `pool`, `pair`, `direction`, `auto_wallets_same`, `auto_wallets_opposite`, `swaps` and `wallets`. The last thousand are kept.
+
+- `/v1/alerts?after_id=N` returns alerts after id N (`0` for the most recent) and `last_id` to poll with.
+- `/v1/alerts/stream` is a server-sent event stream (`event: herd`, `id:` per event, a keepalive comment every 15 seconds). Send `Last-Event-ID` to resume without a gap.
+
+```
+curl -N https://api.tetheralabs.com/v1/alerts/stream
+```
+
+## Keys and limits
+
+| caller | limit |
+|---|---|
+| anonymous, by address | 30 requests a minute, burst 10 |
+| free key | 120 a minute; `POST /v1/keys` with `{"label": "..."}`, three keys a day per address, no account |
+| paid key | the tier's limit for 30 days; `GET /v1/keys/tiers` lists tiers and the treasury, `POST /v1/keys/paid` with `{"tx_hash": "..."}` after sending USDG on Robinhood Chain |
+
+Send the key as `X-Tethera-Key`. Only a hash of it is stored. Paid tiers open when the treasury address is published.
+
+## MCP
+
+The same tools (`crowding`, `herds`, `pool`, `wallet`, `token`, `health`) are served over the Model Context Protocol at `https://api.tetheralabs.com/mcp` (streamable HTTP, no key needed; the anonymous rate limit applies). Add that URL to any MCP client. For a local install, `PYTHONPATH=src python -m tethera.mcp_server` runs the same server over stdio.

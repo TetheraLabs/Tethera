@@ -18,9 +18,16 @@ def db():
         yield conn
 
 @pytest.fixture(scope="session")
-def client():
-    with httpx.Client(base_url=API, timeout=240) as c:
-        yield c
+def client(db):
+    # the suite makes more calls than the anonymous limit allows in a minute, so it runs on a throwaway key
+    import hashlib, secrets
+    key = "tk_test_" + secrets.token_urlsafe(16); h = hashlib.sha256(key.encode()).hexdigest()
+    db.execute("INSERT INTO api_keys (key_hash, label, requests_per_minute) VALUES (%s, 'pytest-session', 600)", (h,)); db.commit()
+    try:
+        with httpx.Client(base_url=API, timeout=240, headers={"X-Tethera-Key": key}) as c:
+            yield c
+    finally:
+        db.execute("DELETE FROM api_keys WHERE key_hash = %s", (h,)); db.commit()
 
 @pytest.fixture(scope="session")
 def busy_pool(db):
@@ -73,6 +80,32 @@ def test_series_and_flock(client):
     s = client.get("/v1/series", params={"hours": 24}).json(); assert 20 <= len(s["points"]) <= 25
     p = s["points"][-1]; assert set(("hour", "swaps", "automated_share", "herd_minutes")) <= set(p)
     f = client.get("/v1/flock").json(); assert "pools" in f and f["window_seconds"] == 60
+
+def test_badge(client, busy_token):
+    r = client.get(f"/v1/token/{busy_token}/badge.svg"); assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml")
+    assert "tethera" in r.text and "<svg" in r.text
+
+def test_alerts_and_stream(client):
+    j = client.get("/v1/alerts").json(); assert "alerts" in j and j["last_id"] >= 0
+    with client.stream("GET", "/v1/alerts/stream", timeout=10) as s:
+        first = next(s.iter_lines()); assert first.startswith("retry:")
+
+def test_keys(client, db):
+    t = client.get("/v1/keys/tiers").json(); assert t["tiers"] and "open" in t
+    r = client.post("/v1/keys", json={"label": "pytest"}); assert r.status_code == 201
+    k = r.json()["key"]; assert k.startswith("tk_")
+    assert client.get("/v1/herds", headers={"X-Tethera-Key": k}).headers.get("x-ratelimit-limit") == "120"
+    assert client.post("/v1/keys/paid", json={"tx_hash": "0x" + "1" * 64}).status_code in (503, 404, 422)
+    db.execute("DELETE FROM api_keys WHERE label = 'pytest'"); db.commit()
+
+def test_mcp_over_http(client):
+    h = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+    init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}}
+    assert client.post("/mcp", json=init, headers=h).status_code == 200
+    tools = client.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, headers=h).json()["result"]["tools"]
+    assert {"crowding", "herds", "pool", "wallet", "token", "health"} <= {t["name"] for t in tools}
+    r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "health", "arguments": {}}}, headers=h).json()
+    assert "swaps_last_5_min" in r["result"]["content"][0]["text"]
 
 # ---------------- data invariants ----------------
 
@@ -132,3 +165,5 @@ def test_mcp_tools_answer():
     import importlib; m = importlib.import_module("tethera.mcp_server")
     h = m.health(); assert "swaps_last_5_min" in h
     assert "herds" in m.herds()
+    assert m.pool("0x0000000000000000000000000000000000000001") == {"error": "unknown pool"}
+    assert m.token("0x0000000000000000000000000000000000000001") == {"error": "unknown token"}

@@ -47,6 +47,7 @@
     <div class="prose"><p id="r-read"></p></div>
     <div class="pools" id="r-pools"></div>
     <p class="note">Shares are of organic swaps or wallets, self-cancelling trades removed. "Fresh" and "born together" are shown only for tokens whose first trade falls inside the window. The rules are on the <a href="method.html">Method</a> page; the raw answer is at <code id="r-api"></code>.</p>
+    <p class="note">Badge for a project page, live from this audit: <img id="r-badge" alt="Tethera real-activity badge" style="vertical-align:middle;height:22px"> <code id="r-embed" style="display:block;margin-top:6px;white-space:pre-wrap;word-break:break-all"></code></p>
   </div>
 </section>
 <section class="s" id="examples">
@@ -91,6 +92,8 @@
     var rows=d.pools.map(function(p){return '<tr><td><code>'+p.pool.slice(0,10)+'…</code></td><td>'+p.protocol+'</td><td>'+(p.fee_tier==='dynamic'?'dynamic':p.fee_tier==null?'–':(p.fee_tier===0?'zero':p.fee_tier+'%'))+'</td><td>'+(p.against||'?')+(p.against_kind==='copycat'?' (copy)':'')+'</td><td class="r">'+p.swaps.toLocaleString('en-GB')+'</td></tr>'}).join('');
     document.getElementById('r-pools').innerHTML='<div class="tblwrap"><table class="stats"><thead><tr><th>pool</th><th>protocol</th><th>fee</th><th>against</th><th class="r">swaps</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
     document.getElementById('r-api').textContent=API+'/v1/token/'+addr;
+    var em=document.getElementById('r-embed');if(em){em.textContent='<a href="https://tetheralabs.com/check.html#'+addr+'"><img src="'+API+'/v1/token/'+addr+'/badge.svg" alt="Tethera real-activity check"></a>';}
+    var bi=document.getElementById('r-badge');if(bi){bi.src=API+'/v1/token/'+addr+'/badge.svg';}
   }
   function check(addr){
     addr=addr.trim(); if(!/^0x[0-9a-fA-F]{40}$/.test(addr)){st.textContent='That is not a contract address.';return}

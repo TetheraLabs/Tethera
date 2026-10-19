@@ -42,3 +42,59 @@ and the same optimizer setting as v4 core (the pool manager does not compile und
   An incremental counter with lazy expiry is the v2 gas work.
 - No Sybil mitigation (unflagged repeat senders at half weight) yet, as the spec says for v1.
 - Not done: deployment scripts, a multisig owner, the testnet replay, and the API's use of `feeFor`.
+
+## Deploy to testnet
+
+`script/Deploy.s.sol` deploys AutomatedSet, then mines a CREATE2 salt so that CrowdingHook lands on an address whose
+low 14 bits are exactly the permissions it declares (`afterInitialize`, `beforeSwap`, `afterSwap`,
+`afterSwapReturnDelta`: `0x10c4`), deploys the hook through the standard CREATE2 factory
+(`0x4e59b44847b379578588920cA78FbF26c0B4956C`, which the chain must have) and logs every address.
+
+Environment:
+
+| variable | meaning |
+|---|---|
+| `RPC` | JSON-RPC URL of the target chain |
+| `POOL_MANAGER` | the Uniswap v4 PoolManager on that chain. Robinhood Chain mainnet: `0x8366a39cc670b4001a1121b8f6a443a643e40951` (the address the swap follower reads). Testnet: fill in from the chain docs |
+| `TREASURY` | receives Tethera's share (20% of the surcharge) |
+| `OWNER` | owner of both contracts; default the broadcasting sender |
+| `SETTER` | the labelling job's hot wallet; default `OWNER` |
+| `AUTOMATED_SET` | optional: reuse an existing set instead of deploying one |
+
+Sign with a Ledger:
+
+```
+cd contracts
+export RPC=<testnet rpc> POOL_MANAGER=<pool manager> TREASURY=<treasury> SETTER=<hot wallet>
+forge script script/Deploy.s.sol --rpc-url $RPC --ledger --sender <ledger address> --broadcast
+```
+
+Add `--verify --verifier blockscout --verifier-url <explorer api url>` to verify on a Blockscout explorer, or run
+`forge verify-contract <address> src/CrowdingHook.sol:CrowdingHook --verifier blockscout --verifier-url <url>`
+afterwards with the constructor arguments (`--constructor-args $(cast abi-encode "constructor(address,address,address,address)" <pool manager> <set> <owner> <treasury>)`).
+The salt is printed by the script and recorded under `broadcast/`.
+
+Chain details to fill in from the chain docs before the first run: the testnet RPC URL and chain id, its PoolManager,
+whether the CREATE2 factory above is deployed there (the script refuses to run if not: `cast code 0x4e59b4...956C --rpc-url $RPC`
+must return bytecode), and the explorer's verification URL.
+
+Dry run on a local node first:
+
+```
+anvil --port 18545 &
+POOL_MANAGER=0x000000000000000000000000000000000000dEaD TREASURY=<any address> \
+  forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:18545 --private-key <anvil key> --broadcast
+```
+
+The hook's constructor does not call the pool manager, so a placeholder address is enough for the dry run.
+
+### Updating the set
+
+`script/SetterBatch.s.sol` adds (or, with `REMOVE=true`, removes) a batch of wallets from the setter wallet:
+
+```
+AUTOMATED_SET=<set> WALLETS=0xabc...,0xdef... \
+  forge script script/SetterBatch.s.sol --rpc-url $RPC --private-key $SETTER_KEY --broadcast
+```
+
+The same call from the shell, without a script: `cast send <set> "add(address[])" "[0xabc...,0xdef...]" --rpc-url $RPC --private-key $SETTER_KEY`.

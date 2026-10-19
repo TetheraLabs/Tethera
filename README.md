@@ -29,6 +29,12 @@ Services are restarted through the host's service manager; the followers and the
 
 **MCP.** The crowding signal is also an MCP server over stdio for trading agents: `PYTHONPATH=__REPO__/src __REPO__/.venv/bin/python -m tethera.mcp_server`, with `__REPO__` the checkout path. Tools: `crowding`, `herds`, `wallet`, `health`. The client configuration snippet is in `docs/api.md`.
 
+## For agents
+
+- MCP over HTTP: `https://api.tetheralabs.com/mcp` (tools: crowding, herds, pool, wallet, token, health).
+- Herd alerts: `GET /v1/alerts`, or `curl -N https://api.tetheralabs.com/v1/alerts/stream`.
+- Keys: `POST /v1/keys` for a free key; tiers at `GET /v1/keys/tiers`. See `docs/api.md`.
+
 ## Tests
 
 `.venv/bin/python -m pytest -q tests` runs against the live stack on the host: every public endpoint answers with the keys the docs promise, the data obeys the rules on the Method page (one token per symbol, labels need five swaps and three signals, flagged trades net to nothing, pool minutes exclude them), the follower is current, the publisher round-trips an issue to HTML, CSV and PDF, and the MCP tools answer. Run it after any change to the API, the labelling or the publisher.

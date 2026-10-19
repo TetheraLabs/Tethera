@@ -1,7 +1,9 @@
 """MCP server over the crowding signal, for trading agents that speak the Model Context Protocol.
 
-Runs over stdio, started by the client: PYTHONPATH=src python -m tethera.mcp_server
-Wraps the signal module directly; no HTTP in between.
+Two ways in:
+  - over HTTP, hosted: https://api.tetheralabs.com/mcp (streamable HTTP; add the URL to your client, no key needed)
+  - over stdio, local: PYTHONPATH=src python -m tethera.mcp_server
+Both wrap the signal module directly; no HTTP API in between.
 """
 try:
     from mcp.server.mcpserver import MCPServer as FastMCP      # mcp >= 2
@@ -9,7 +11,7 @@ except ImportError:                                            # mcp 1.x
     from mcp.server.fastmcp import FastMCP
 
 from . import signal
-from .api import _health, _wallet
+# the API module imports this one to mount it at /mcp, so its helpers are imported inside the tools, not at load
 
 mcp = FastMCP("tethera", instructions=(
     "Tethera measures herding among automated traders on Robinhood Chain. Before placing a swap, "
@@ -54,8 +56,25 @@ def herds(min_wallets: int = 15) -> dict:
 def pool(pool: str) -> dict:
     """Trust profile of one pool over the last 7 days: organic volume, self-cancelling (printed) volume and share,
     automated share, herd minutes, token kinds (official Robinhood Stock Token or copycat), fee tier and flags.
-    `pool` is the v2/v3 address or the 32-byte v4 pool id."""
-    return _get(f"/v1/pool/{pool}")
+    `pool` is the v2/v3 address or the 32-byte v4 pool id. Returns {"error": ...} for an unknown pool."""
+    from .api import _pool
+    out = _pool(pool.strip())
+    return out if out is not None else {"error": "unknown pool"}
+
+
+@mcp.tool()
+def token(address: str, days: float = 7) -> dict:
+    """Launch audit of one token over the last `days` (1 to 30): how much of its trading was real and who was there.
+
+    Returns swaps, wallets, automated_swap_share, self-cancelling (printed) share, fresh_wallet_share (wallets whose
+    first swap in our data was in this token), born_together (largest batch of fresh wallets first seen in one
+    ten-minute bucket), top10_share (ten busiest wallets' share of swaps), one_swap_share, the pools, and a verdict:
+    organic, mixed, automated, automated-concentrated, fresh-wallet driven or printed. Cached 30 minutes.
+    Use it before trading or listing a token, or to answer "is this token's volume real".
+    Returns {"error": ...} for an unknown token."""
+    from .audit import audit_token
+    out = audit_token(address.strip(), days=max(1.0, min(30.0, float(days))))
+    return out if out is not None else {"error": "unknown token"}
 
 
 @mcp.tool()
@@ -71,6 +90,7 @@ def wallet(address: str) -> dict:
     to judge whether a counterparty or a crowd member is a bot, how it trades and who it resembles.
     Returns {"error": ...} when the wallet has no fingerprint.
     """
+    from .api import _wallet
     out = _wallet(address.strip())
     return out if out is not None else {"error": "no fingerprint for this wallet: not labelled automated or registered, or too few swaps in the window"}
 
@@ -82,6 +102,7 @@ def health() -> dict:
     lag_seconds above about 60 means the figures from crowding and herds are stale and should not be
     trusted for a live decision.
     """
+    from .api import _health
     return _health()
 
 
