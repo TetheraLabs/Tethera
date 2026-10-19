@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" role="img" aria-label="Tethera">
+  <rect width="100" height="100" rx="8" fill="#232b31"/>
+  <text x="50" y="74" text-anchor="middle" font-family="'Grenze Gotisch', Georgia, serif" font-weight="700" font-size="76" fill="#f3ede3">T</text>
+  <circle cx="83" cy="83" r="4.5" fill="#c84a2f"/>
+</svg>
