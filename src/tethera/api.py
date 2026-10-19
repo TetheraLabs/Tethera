@@ -5,7 +5,7 @@ with an in-process token bucket: anonymous callers by client address (30 request
 keyed callers by the X-Tethera-Key header, whose limit comes from the api_keys table (only a sha256
 of each key is stored). Over the limit the answer is 429 with a Retry-After header.
 """
-import hashlib, json, os, threading, time
+import time, hashlib, json, os, threading, time
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Path, Query, Request
@@ -278,3 +278,83 @@ def token_audit(address: str = TOKEN_PATH, days: float = DAYS):
     if out is None:
         raise HTTPException(status_code=404, detail="unknown token")
     return out
+
+
+# ---- series and the live flock, for the site's drawings. Cached in-process: these aggregate a million rows.
+_series_cache = {}
+
+def _cached(key, ttl, fn):
+    now = time.time(); hit = _series_cache.get(key)
+    if hit and now - hit[0] < ttl: return hit[1]
+    val = fn(); _series_cache[key] = (now, val); return val
+
+def _series(hours: int):
+    def build():
+        with db.connect() as conn:
+            conn.execute("SET work_mem = '256MB'"); conn.execute("SET statement_timeout = '60s'")
+            rows = conn.execute("""
+                WITH m AS (SELECT date_trunc('hour', minute) AS h, pool, minute, direction, swaps, auto_swaps, auto_wallets
+                           FROM pool_minutes WHERE minute >= date_trunc('hour', now()) - make_interval(hours => %s)),
+                     herd AS (SELECT a.h, count(*) AS herd_minutes, max(a.auto_wallets) AS largest
+                              FROM m a LEFT JOIN m b ON b.pool = a.pool AND b.minute = a.minute AND b.direction <> a.direction
+                              WHERE a.auto_wallets >= 15 AND coalesce(b.auto_wallets, 0) <= 0.15 * a.auto_wallets GROUP BY 1)
+                SELECT m.h, sum(m.swaps), sum(m.auto_swaps), count(DISTINCT m.pool), coalesce(max(herd.herd_minutes), 0), coalesce(max(herd.largest), 0)
+                FROM m LEFT JOIN herd ON herd.h = m.h GROUP BY m.h ORDER BY m.h""", (hours,)).fetchall()
+            printed = conn.execute("""
+                SELECT date_trunc('hour', block_time) AS h, count(*) FILTER (WHERE self_cancel), count(*)
+                FROM swaps WHERE block_time >= date_trunc('hour', now()) - make_interval(hours => %s) GROUP BY 1 ORDER BY 1""", (hours,)).fetchall()
+        pr = {h: (sc, n) for h, sc, n in printed}
+        return {"hours": hours, "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "points": [{"hour": h.astimezone(timezone.utc).isoformat(timespec="minutes"), "swaps": int(sw), "automated_share": round(a / sw, 4) if sw else None,
+                            "pools": int(pools), "herd_minutes": int(hm), "largest_herd": int(lg),
+                            "self_cancelling_share": round(pr[h][0] / pr[h][1], 4) if h in pr and pr[h][1] else None}
+                           for h, sw, a, pools, hm, lg in rows]}
+    return _cached(f"series:{hours}", 300, build)
+
+def _flock():
+    """Every pool-side with automated wallets in the last 60 seconds: the flock as it stands."""
+    def build():
+        with db.connect() as conn:
+            conn.execute("SET statement_timeout = '20s'")
+            rows = conn.execute("""
+                SELECT s.pool, s.direction, count(DISTINCT s.tx_from) FILTER (WHERE s.is_automated AND NOT coalesce(f.is_volume_bot, false)) AS auto,
+                       count(DISTINCT s.tx_from) AS all_wallets, coalesce(coalesce(t0.symbol, left(p.token0, 6)) || '/' || coalesce(t1.symbol, left(p.token1, 6)), left(s.pool, 10)) AS pair
+                FROM swaps s LEFT JOIN wallet_features f ON f.wallet = s.tx_from AND f.is_volume_bot
+                LEFT JOIN pools p ON p.pool = s.pool LEFT JOIN tokens t0 ON t0.token = p.token0 LEFT JOIN tokens t1 ON t1.token = p.token1
+                WHERE s.block_time > now() - interval '60 seconds' AND NOT s.self_cancel
+                GROUP BY 1, 2, 5 HAVING count(DISTINCT s.tx_from) FILTER (WHERE s.is_automated AND NOT coalesce(f.is_volume_bot, false)) > 0
+                ORDER BY 3 DESC LIMIT 60""").fetchall()
+        sides = {}
+        for pool, d, auto, allw, pair in rows: sides.setdefault(pool, {"pool": pool, "pair": pair, "buy0": 0, "sell0": 0, "wallets": 0}); sides[pool][d] = int(auto); sides[pool]["wallets"] = max(sides[pool]["wallets"], int(allw))
+        out = []
+        for v in sides.values():
+            same, opp = max(v["buy0"], v["sell0"]), min(v["buy0"], v["sell0"])
+            v["verdict"] = "herd" if same >= 15 and opp <= 0.15 * same else "busy" if same >= 15 else "calm"; out.append(v)
+        return {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "window_seconds": 60,
+                "automated_wallets": sum(max(v["buy0"], v["sell0"]) for v in out), "pools": out}
+    return _cached("flock", 20, build)
+
+
+@app.get("/v1/series")
+def series(hours: int = Query(48, ge=6, le=168)):
+    """Per-hour swaps, automated share, herd minutes, largest herd and self-cancelling share. Cached five minutes."""
+    return _series(hours)
+
+
+@app.get("/v1/flock")
+def flock():
+    """Automated wallets per pool side in the last 60 seconds. Cached 20 seconds."""
+    return _flock()
+
+
+# keep the 48-hour series warm so no visitor waits for the aggregate
+def _warm_series():
+    import threading
+    def loop():
+        while True:
+            try: _series_cache.pop("series:48", None); _series(48)
+            except Exception: pass
+            time.sleep(240)
+    threading.Thread(target=loop, daemon=True).start()
+
+_warm_series()
