@@ -14,14 +14,14 @@ The pool keeps the dynamic-fee flag (`0x800000`, already set on 230,000 pools on
 
 ## 2. What the week of data says
 
-Live week to 18 Oct 2026, $2.99B of stable-quoted volume after dropping copycat "stablecoins", copycat-quoted pools and static zero-fee pools (97% of whose volume was same-transaction round trips that settle nothing under v4 flash accounting). Labels: the first consistent 7-day labelling of the week (18 Oct 18:26; earlier versions of this table sat on six-hour judgements that missed the large arbitrage bots and showed 1.3% herd volume). 93% of automated labels sit exactly at the three-signal threshold, so these numbers are sensitive to the label rule; the calibration report tracks that.
+Live week to 18 Oct 2026, $2.99B of stable-quoted volume after dropping copycat "stablecoins", copycat-quoted pools and static zero-fee pools (97% of whose volume was same-transaction round trips that settle nothing under v4 flash accounting). Labels: the 7-day labelling on the rule of 19 October (one transaction is one trade); the rule change removed 5,200 small false positives and left the herd numbers within 2% of the day before. 93% of automated labels sit exactly at the three-signal threshold, so these numbers are sensitive to the label rule; the calibration report tracks that.
 
 | | flat 30 bp | adjusted (+20 / −10 bp) | adjusted, judged one minute late |
 |---|---|---|---|
-| Fee revenue | $8.95M | $9.74M (+8.9%) | $9.22M (+3.0%) |
-| Surcharge collected | – | $803k | $317k |
-| Rebates paid | – | $9.3k | $48.5k |
-| Herd-side volume | – | $401M (13.5% of all) | $159M |
+| Fee revenue | $9.06M | $9.85M (+8.8%) | $9.32M (+3.0%) |
+| Surcharge collected | – | $803k | $324k |
+| Rebates paid | – | $10.4k | $55.8k |
+| Herd-side volume | – | $402M (13.3% of all) | $162M |
 
 - Herd minutes are 13.5% of volume on the 7-day labels (8,718 herd minutes in the week), so the adjusted schedule lifts LP revenue by about 9%. The adverse-selection side is smaller than the fee side: the price moves the herd's way by a median +5 bp over the next five minutes, and the move × herd volume ($359k) is 30% of the flat fees earned on that volume ($1.20M). The honest pitch is still the herd's own cost and the LP's protection in the worst minutes, with a revenue uplift that is now material rather than a rounding error. At a flat fee a herd minute is close to worthless for LPs; the surcharge turns it profitable.
 - For the herd the pitch is the netting simulator's number: in herd minutes the AMM price was ~30 bp worse than a Dutch fill. Joining a herd already costs 30 bp; the surcharge makes that explicit and the rebate pays whoever absorbs it.

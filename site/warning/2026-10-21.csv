@@ -26,9 +26,9 @@ Real USDG-quoted volume,"$3.0B across 7,956 pools"
 Wallets trading in those pools,"124,700"
 Swaps decoded since 10 October,18.55 million
 Swaps flagged self-cancelling,"70,350"
-Automated wallets,"11,457 of 239,185 we could judge, placing 43% of all swaps"
-One-sided herds (15+ automated wallets one way in one pool-minute),"about 1,500 a day"
-Largest herd of the week,"171 automated wallets buying ETH in the ETH/USDG v4 pool 0x387bf619…, 18 Oct 19:47 UTC"
+Automated wallets,"6,613 of 247,391 we could judge, placing 35% of all swaps (rule of 19 October: one transaction is one trade; the day before, the older rule said 11,830 and 43%)"
+One-sided herds (15+ automated wallets one way in one pool-minute),"about 1,540 a day, unchanged by the rule change: herds are made by the large bots, which kept their label"
+Largest herd of the week,"164 automated wallets, ETH/Hound pool 0xc15b1eb1…, 15 Oct 12:49 UTC"
 Busiest minute of the week,"2,848 wallets in one memecoin pool in sixty seconds, 165 of them software, 15 Oct 12:49 UTC"
 Official Robinhood Stock Tokens trading,"187 of 195, in 961 USDG pools, $394M for the week. NVDA $90M, SPY $54M, SPCX $52M"
 
