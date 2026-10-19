@@ -78,7 +78,15 @@ def main():
             a = int(sys.argv[sys.argv.index("--from") + 1]); b = int(sys.argv[sys.argv.index("--to") + 1])
             total = 0
             for x in range(a, b + 1, 2000):
-                y = min(x + 1999, b); total += process(rpc, conn, x, y)
+                y = min(x + 1999, b)
+                for attempt in range(8):                       # the public endpoint rate-limits; wait and retry, never die mid-range
+                    try:
+                        total += process(rpc, conn, x, y); break
+                    except Exception as e:
+                        conn.rollback(); wait = 10 * (attempt + 1)
+                        log(f"{x:,}-{y:,}: {type(e).__name__}: {str(e)[:80]}; retry in {wait}s"); time.sleep(wait)
+                else:
+                    log(f"{x:,}-{y:,}: giving up on this range after 8 attempts"); continue
                 log(f"{x:,}-{y:,}: {total:,} rows so far")
             # trades stored before their launch row existed have no token yet
             conn.execute("UPDATE curve_trades c SET token = l.token FROM launches l WHERE l.curve = c.curve AND c.token IS NULL"); conn.commit()
