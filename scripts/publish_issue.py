@@ -126,7 +126,7 @@ def main(src):
     shutil.copy(src, os.path.join(OUT, slug + ".md"))
     issues = []
     for f in sorted(os.listdir(OUT), reverse=True):
-        if f.endswith(".md"):
+        if f.endswith(".md") and open(os.path.join(OUT, f)).read(4) == "---\n":   # issues only; other notes may sit beside them
             m, _ = front_matter(open(os.path.join(OUT, f)).read()); s = f[:-3]
             issues.append({"slug": s, "date": m["date"], "title": m["title"], "summary": m.get("summary", ""), "kind": m.get("kind", "weekly"),
                            "html": f"warning/{s}.html", "csv": f"warning/{s}.csv", "pdf": f"warning/{s}.pdf" if os.path.exists(os.path.join(OUT, s + ".pdf")) else None,
