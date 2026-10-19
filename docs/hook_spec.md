@@ -67,6 +67,6 @@ The hot wallet also posts nothing per-pool per-minute; the earlier "posted score
 
 - **Decided 18 Oct 2026:** the automated-wallet set is public on-chain (`AutomatedSet`), readable by any hook or contract; Tethera's share is 20% of the surcharge only.
 
-- The week-2 outcome study (24 h horizon) decides the headline: if crowding costs agents measurably over a day, the hook ships with the surcharge; if not, it ships on the five-minute adverse-selection number alone, which is weaker.
+- **Week-2 outcome study, corrected 19 Oct 2026 (reports/outcome_study.md).** Over 1 Jul to 17 Aug, a one-sided crowd of 15+ against solo trades of the same kind: on ETH/USDG hub pools no cost (entry 5 bp better, +2 bp at 1 h, −7 bp at 24 h); on stock-token pools no entry cost and positive follow-through (+155 bp at 1 h, +1,047 bp at 24 h, 725 crowd cells); on memecoin pools a large cost: the crowd paid a median 261 bp more at entry and was a median 12% down an hour later, 8% down a day later, winning 44% of the time (26,685 crowd cells). So the hook's surcharge case is memecoin and launch pools, which is where Pons and Hookr create them; on the hub it is a protection story only.
 - H and W want a block-level replay rather than minute aggregates; the testnet replay gives that.
 - Whether pool creators (the launchpad) will accept a hook they do not control: the params are theirs, the set is ours; the set is public so they can audit who is in it.
