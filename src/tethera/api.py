@@ -182,6 +182,7 @@ def _pool(pool: str):
         if not meta:
             return None
         pool_id, protocol, fee, hooks, created, s0, k0, o0, d0, s1, k1, o1, d1 = meta
+        p_token0, p_token1 = conn.execute("SELECT token0, token1 FROM pools WHERE pool = %s", (pool_id,)).fetchone()
         stable_side = 0 if k0 == "stable" else 1 if k1 == "stable" else None
         dec = (d0 if stable_side == 0 else d1) if stable_side is not None else None
         amt = "amount0" if stable_side == 0 else "amount1"
@@ -216,6 +217,7 @@ def _pool(pool: str):
     return {"pool": pool_id, "protocol": protocol, "fee_tier": None if fee is None else ("dynamic" if fee == 8388608 else fee / 1e4),
             "hooks": hooks if hooks and int(hooks, 16) != 0 else None, "created_block": created,
             "token0": tok(s0, k0, o0), "token1": tok(s1, k1, o1), "priced_in": "USD" if stable_side is not None and dec is not None else None,
+            "token_audit": [f"/v1/token/{a}" for a, k in ((p_token0, k0), (p_token1, k1)) if k not in ("stable", "eth")],
             "last_7_days": {"swaps": n, "peak_wallets_in_a_minute": peak_wallets_minute, "automated_swap_share": round(auto_n / n, 4) if n else None,
                             "organic_volume_usd": round(float(organic_usd), 2) if organic_usd is not None else None,
                             "self_cancelling_volume_usd": round(float(printed_usd), 2) if printed_usd is not None else None,
