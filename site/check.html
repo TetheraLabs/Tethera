@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Check a token · Tethera</title>
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="site.css?v=20261019a">
+<style>
+  .checkform{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+  .checkform input{flex:1;min-width:0;font-family:"IBM Plex Mono",monospace;font-size:15px;padding:12px 14px;border:1px solid var(--rule);border-radius:6px;background:var(--card);color:var(--fg)}
+  .checkform button{font:inherit;font-family:"Grenze Gotisch",Georgia,serif;font-size:19px;padding:10px 18px;border:0;border-radius:6px;background:var(--raddle);color:#fff;cursor:pointer}
+  .verdict{display:inline-block;font-family:"Grenze Gotisch",Georgia,serif;font-size:clamp(28px,4vw,44px);line-height:1.05;margin:18px 0 6px}
+  .verdict.printed,.verdict.fresh,.verdict.concentrated{color:var(--raddle)}
+  .verdict.organic{color:var(--moss)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px;margin:18px 0}
+  .cell2{border-top:2px solid var(--fg);padding-top:8px}
+  .cell2 .n{font-family:"Grenze Gotisch",Georgia,serif;font-size:30px;line-height:1.05}
+  .cell2 .l{font-size:13px;color:var(--fg-2);margin-top:4px}
+  .status{color:var(--fg-2);font-family:"IBM Plex Mono",monospace;font-size:14px;margin-top:14px}
+  .pools{margin-top:22px}
+</style>
+</head>
+<body>
+<nav class="wrap">
+  <a class="wordmark" href="index.html"><img class="mark" src="logo-collie-dark.png" alt="" width="674" height="405">Tethera</a>
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
+  <ul><li><a href="herding.html">What is herding?</a></li><li><a href="why.html">Why it matters</a></li><li><a href="how.html">How it works</a></li><li><a href="products.html">Products</a></li><li><a href="check.html">Check a token</a></li><li><a href="method.html">Method</a></li><li><a href="stats.html">Stats</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="about.html">About</a></li></ul>
+</nav>
+<header class="pagehead">
+  <div class="wrap">
+    <p class="eyebrow">Check a token</p>
+    <h1>Was it real?</h1>
+    <p class="lede">Paste a token contract on Robinhood Chain. We count every swap in its pools over the last seven days and say who was there: people, software, wallets born for the occasion, or one wallet trading with itself.</p>
+    <form class="checkform" id="f"><input id="addr" type="text" placeholder="0x… token contract address" autocomplete="off" spellcheck="false" required pattern="^0x[0-9a-fA-F]{40}$"><button type="submit">Check</button></form>
+    <p class="status" id="status">Takes up to half a minute the first time a token is checked.</p>
+  </div>
+</header>
+<section class="s" id="result" hidden>
+  <div class="wrap">
+    <p class="eyebrow" id="r-name"></p>
+    <div class="verdict" id="r-verdict"></div>
+    <p class="muted" id="r-sub"></p>
+    <div class="grid" id="r-grid"></div>
+    <div class="prose"><p id="r-read"></p></div>
+    <div class="pools" id="r-pools"></div>
+    <p class="note">Shares are of organic swaps or wallets, self-cancelling trades removed. "Fresh" and "born together" are shown only for tokens whose first trade falls inside the window. The rules are on the <a href="method.html">Method</a> page; the raw answer is at <code id="r-api"></code>.</p>
+  </div>
+</section>
+<section class="s" id="examples">
+  <div class="wrap">
+    <p class="eyebrow">Try one</p>
+    <p class="muted">Official NVDA stock token <button type="button" class="ex" data-a="0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC">0xd060…9EEC</button> · PONS <button type="button" class="ex" data-a="0x39dbed3a2bd333467115de45665cc57f813c4571">0x39db…4571</button> · HOOKR <button type="button" class="ex" data-a="0xc1a05901688b869bcc8bc0f7fb8b528bd9c4ec03">0xc1a0…ec03</button></p>
+  </div>
+</section>
+<footer>
+  <div class="wrap">
+    <span>Tethera Labs · Robinhood Chain · <a href="https://github.com/TetheraLabs/Tethera">github.com/TetheraLabs</a></span>
+    <span>Illustrations: Tethera Labs, 2026</span>
+  </div>
+</footer>
+<script>
+(function(){
+  var m=document.querySelector('nav .menu'),u=document.querySelector('nav ul');
+  if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)})}
+  var API='https://api.tetheralabs.com';
+  var f=document.getElementById('f'),inp=document.getElementById('addr'),st=document.getElementById('status'),res=document.getElementById('result');
+  function pct(x){return x==null?'–':Math.round(x*100)+'%'}
+  function usd(x){return x==null?'–':(x>=1e6?'$'+(x/1e6).toFixed(1)+'M':'$'+Math.round(x).toLocaleString('en-GB'))}
+  function cls(v){return v.indexOf('printed')>=0?'printed':v.indexOf('fresh')>=0?'fresh':v.indexOf('concentrated')>=0?'concentrated':v==='organic'?'organic':''}
+  function reading(d){
+    var v=d.verdict,s=[];
+    if(v==='printed')s.push('Most of the reported volume was one or a few wallets swapping in and out inside single transactions. Nothing was traded.');
+    else if(v.indexOf('fresh')>=0)s.push('The buyers were wallets with no history: '+pct(d.fresh_wallet_share)+' first appeared during this token\'s window'+(d.born_together?', '+d.born_together.toLocaleString('en-GB')+' of them in the same ten minutes':'')+(d.born_for_this_share!=null?', and '+pct(d.born_for_this_share)+' have no life on the chain beyond this token':'')+'. That is a script until shown otherwise.');
+    else if(v.indexOf('automated')>=0)s.push(pct(d.automated_swap_share)+' of the swaps came from wallets that trade like software'+(v.indexOf('concentrated')>=0?', and ten wallets did more than half of them':'')+'. On an established pool that is arbitrage and normal; on a new token it means the bots arrived and the people did not.');
+    else if(v==='organic')s.push('Mostly wallets with history, no single operator dominating, few bots. The rare one.');
+    else s.push('Real traders and bots side by side, which is the usual state of a live pool.');
+    if(d.printed_volume_usd>0&&v!=='printed')s.push(' A further '+usd(d.printed_volume_usd)+' of self-cancelling volume was removed before counting.');
+    return s.join('');
+  }
+  function show(d,addr){
+    res.hidden=false;
+    document.getElementById('r-name').textContent=(d.symbol||'Unknown symbol')+(d.name?' · '+d.name:'')+(d.official_stock_token?' · official Robinhood Stock Token':'')+(d.kind==='copycat'?' · a copy of a busier token with the same symbol':'');
+    var vd=document.getElementById('r-verdict');vd.textContent=d.verdict;vd.className='verdict '+cls(d.verdict);
+    document.getElementById('r-sub').textContent=(d.new_in_window?'First traded '+d.first_seen.replace('T',' ').slice(0,16)+' UTC. ':'Trading before the window began. ')+'Seven days, '+d.swaps.toLocaleString('en-GB')+' swaps by '+d.wallets.toLocaleString('en-GB')+' wallets in '+d.pools.length+(d.pools.length===20?'+':'')+' pools.';
+    var cells=[[pct(d.automated_swap_share),'swaps by automated wallets'],[pct(d.printed_share),'of volume self-cancelling'],[usd(d.organic_volume_usd),'organic volume (USDG-quoted pools)'],[d.new_in_window?pct(d.fresh_wallet_share):'n/a','wallets with no prior history'],[d.new_in_window&&d.born_together?d.born_together.toLocaleString('en-GB'):'n/a','wallets born in one ten-minute span'],[pct(d.top10_share),'swaps by the ten busiest wallets'],[pct(d.only_bought_share)+' / '+pct(d.only_sold_share),'only bought / only sold'],[d.born_for_this_share!=null?pct(d.born_for_this_share):'not yet fetched','wallets born for this token (on-chain count)']];
+    document.getElementById('r-grid').innerHTML=cells.map(function(c){return '<div class="cell2"><div class="n">'+c[0]+'</div><div class="l">'+c[1]+'</div></div>'}).join('');
+    document.getElementById('r-read').textContent=reading(d);
+    var rows=d.pools.map(function(p){return '<tr><td><code>'+p.pool.slice(0,10)+'…</code></td><td>'+p.protocol+'</td><td>'+(p.fee_tier==='dynamic'?'dynamic':p.fee_tier==null?'–':(p.fee_tier===0?'zero':p.fee_tier+'%'))+'</td><td>'+(p.against||'?')+(p.against_kind==='copycat'?' (copy)':'')+'</td><td class="r">'+p.swaps.toLocaleString('en-GB')+'</td></tr>'}).join('');
+    document.getElementById('r-pools').innerHTML='<div class="tblwrap"><table class="stats"><thead><tr><th>pool</th><th>protocol</th><th>fee</th><th>against</th><th class="r">swaps</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
+    document.getElementById('r-api').textContent=API+'/v1/token/'+addr;
+  }
+  function check(addr){
+    addr=addr.trim(); if(!/^0x[0-9a-fA-F]{40}$/.test(addr)){st.textContent='That is not a contract address.';return}
+    st.textContent='Counting…'; res.hidden=true;
+    fetch(API+'/v1/token/'+addr).then(function(r){if(r.status===404)throw new Error('We have no swaps for that address on Robinhood Chain.');if(!r.ok)throw new Error('The audit could not run ('+r.status+'). Try again in a minute.');return r.json()})
+      .then(function(d){st.textContent=d.cached?'From the last half hour.':'Counted just now.';show(d,addr);try{history.replaceState(null,'','#'+addr)}catch(e){}})
+      .catch(function(e){st.textContent=e.message});
+  }
+  f.addEventListener('submit',function(e){e.preventDefault();check(inp.value)});
+  Array.prototype.forEach.call(document.querySelectorAll('.ex'),function(b){b.addEventListener('click',function(){inp.value=b.dataset.a;check(b.dataset.a)})});
+  if(location.hash&&/^#0x[0-9a-fA-F]{40}$/.test(location.hash)){inp.value=location.hash.slice(1);check(inp.value)}
+})();
+</script>
+</body>
+</html>
