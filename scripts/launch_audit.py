@@ -48,11 +48,15 @@ WITH tok AS (
     SELECT pl.token, pl.symbol, count(DISTINCT pl.pool) AS pools, sum(m.swaps) AS swaps, min(m.minute) AS first_seen
     FROM pl JOIN pool_minutes m ON m.pool = pl.pool AND m.minute >= %(since)s
     GROUP BY 1, 2
+), ever AS (
+    -- the token's first trade in all our data (the hot table starts 10 Oct 2026), so "new" means new, not "quiet at the window's start"
+    SELECT pl.token, min(m.minute) AS first_ever FROM pl JOIN pool_minutes m ON m.pool = pl.pool WHERE pl.token IN (SELECT token FROM act) GROUP BY 1
 )
-(SELECT token, symbol, pools, swaps, first_seen FROM act WHERE swaps >= %(min_swaps)s AND (NOT %(new_only)s OR first_seen > %(since)s + interval '10 minutes') ORDER BY swaps DESC LIMIT %(top)s)
+(SELECT act.token, act.symbol, act.pools, act.swaps, act.first_seen, ever.first_ever FROM act JOIN ever USING (token)
+ WHERE act.swaps >= %(min_swaps)s AND (NOT %(new_only)s OR ever.first_ever >= %(since)s) ORDER BY act.swaps DESC LIMIT %(top)s)
 UNION
-(SELECT token, symbol, pools, swaps, first_seen FROM (
-    SELECT act.*, row_number() OVER (PARTITION BY upper(symbol) ORDER BY swaps DESC) AS rn FROM act WHERE upper(symbol) = ANY(%(symbols)s)) x
+(SELECT token, symbol, pools, swaps, first_seen, first_ever FROM (
+    SELECT act.*, ever.first_ever, row_number() OVER (PARTITION BY upper(act.symbol) ORDER BY act.swaps DESC) AS rn FROM act JOIN ever USING (token) WHERE upper(act.symbol) = ANY(%(symbols)s)) x
  WHERE rn <= 2)   -- a launch name gets copied; keep the two busiest contracts per requested symbol
 ORDER BY swaps DESC
 """
@@ -162,12 +166,12 @@ with psycopg.connect(DB) as conn:
     conn.execute("SET work_mem = '512MB'"); conn.execute("SET statement_timeout = '30min'")
     cands = conn.execute(CANDIDATES, {"since": since, "min_swaps": a.min_swaps, "symbols": symbols, "top": a.top, "new_only": a.new_only}).fetchall()
     log(f"{len(cands)} candidate tokens ({time.time()-t0:.0f}s)")
-    for token, symbol, pools, swaps, first_seen in cands:
+    for token, symbol, pools, swaps, first_seen, first_ever in cands:
         t = time.time()
         cols = ["swaps", "wallets", "first_seen", "auto_swaps", "auto_wallets", "sc_swaps", "organic_usd", "printed_usd", "fresh_wallets",
                 "one_swap_wallets", "born_together", "born_bucket", "top10_swaps", "only_bought", "only_sold", "organic_wallets"]
         r = dict(zip(cols, conn.execute(AUDIT, {"token": token, "since": since}).fetchone()))
-        r.update(token=token, symbol=symbol, pools=pools, new_token=(r["first_seen"] - since).total_seconds() > 600)
+        r.update(token=token, symbol=symbol, pools=pools, new_token=(first_ever >= since))
         r["nonce"] = nonce_shares(conn, token, since, a.nonce_max) if a.nonce else None
         if r["nonce"] and r["new_token"] and r["nonce"]["born_for_this"] >= 0.5: r["one_trade_wallets"] = True
         r["verdict"] = verdict(r)
