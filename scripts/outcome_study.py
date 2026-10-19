@@ -36,14 +36,16 @@ def bucket(n):
         if lo <= n <= hi: return name
 
 def pool_kind(conn):
-    rows = conn.execute("""SELECT p.pool, a.kind, b.kind FROM pools p
+    """Pool kind for the study. Pools quoting a copycat token, static zero-fee pools (where volume is printed) and pools
+    whose tokens are unknown are left out: their price series are not markets."""
+    rows = conn.execute("""SELECT p.pool, a.kind, b.kind, p.fee FROM pools p
                            LEFT JOIN tokens a ON a.token = p.token0 LEFT JOIN tokens b ON b.token = p.token1""").fetchall()
     out = {}
-    for pool, k0, k1 in rows:
+    for pool, k0, k1, fee in rows:
         ks = {k0, k1}
+        if "copycat" in ks or fee == 0 or (k0 is None and k1 is None): continue
         if "stock" in ks: out[pool] = "stock"
         elif ks <= {"stable", "eth"} and ks: out[pool] = "eth-stable hub"
-        elif k0 is None and k1 is None: out[pool] = "unknown"
         else: out[pool] = "other"
     return out
 
@@ -55,14 +57,18 @@ def main():
         log(f"{len(kinds):,} pools with a kind; loading minutes {FROM:%Y-%m-%d} to {TO:%Y-%m-%d}")
         df = pd.read_sql("""
             SELECT pool, minute, direction, swaps, wallets, auto_swaps, auto_wallets,
-                   px_median::float8 AS px_median, px_last::float8 AS px_last, last_block
-            FROM pool_minutes_all WHERE minute >= %(a)s AND minute < %(b)s + interval '24 hours' AND px_median IS NOT NULL
+                   amount0_in::float8 AS a0, amount1_in::float8 AS a1, last_block
+            FROM pool_minutes_all WHERE minute >= %(a)s AND minute < %(b)s + interval '24 hours' AND amount0_in > 0 AND amount1_in > 0
         """, conn, params={"a": FROM, "b": TO})
     log(f"{len(df):,} pool-minute rows in {time.time()-t0:.0f}s")
     df["minute"] = pd.to_datetime(df["minute"], utc=True)
-    df = df[np.isfinite(df.px_median) & (df.px_median > 0)]
-    # one price per pool-minute: the last swap of the minute, whichever direction
-    px = (df.sort_values(["pool", "minute", "last_block"]).groupby(["pool", "minute"], as_index=False).last()[["pool", "minute", "px_last"]])
+    df = df[df.pool.isin(kinds)]
+    # prices are volume-weighted (token1 moved / token0 moved), per cell and per pool-minute over both sides:
+    # a median of per-swap ratios is wrecked by dust swaps, a volume-weighted price is not
+    df["px_median"] = df.a1 / df.a0
+    pm = df.groupby(["pool", "minute"], as_index=False).agg(a0=("a0", "sum"), a1=("a1", "sum"))
+    pm["px_last"] = pm.a1 / pm.a0
+    px = pm[["pool", "minute", "px_last"]]
     cells = df[(df.auto_wallets >= 1) & (df.minute < TO)].copy()
     opp = df[["pool", "minute", "direction", "auto_wallets"]].copy()
     opp["direction"] = np.where(opp.direction == "buy0", "sell0", "buy0")
@@ -90,12 +96,22 @@ def main():
         g["px_24h"] = np.where(s_min[i_24h] > g.minute.values + np.timedelta64(30, "m"), s_px[i_24h], np.nan)
         out.append(g)
     cells = pd.concat(out, ignore_index=True)
+    # a broken series: the cell's price is more than 3x away from the pool's price a minute earlier.
+    # Real markets do move 3x inside a minute on a rug or a launch, but on those the "price" is not something a
+    # trade could have been marked against; they are dropped and counted.
+    jump = np.abs(np.log(cells.px_median / cells.px_prev)) > np.log(3)
+    n_jump = int(jump.sum()); cells = cells[~jump].copy()
     cells["entry_impact"] = cells.sign * (cells.px_median / cells.px_prev - 1)
     cells["ret_1h"] = cells.sign * (cells.px_1h / cells.px_median - 1)
     cells["ret_24h"] = cells.sign * (cells.px_24h / cells.px_median - 1)
-    # winsorise the tails (bad decimals, dust swaps) so a few absurd ratios can't drive the means
+    # physical bounds: a position cannot lose more than everything (-100%); gains capped at 10x so one launch cannot own a mean
+    for c in ("ret_1h", "ret_24h"): cells[c] = cells[c].clip(-1.0, 10.0)
+    cells["entry_impact"] = cells.entry_impact.clip(-0.5, 2.0)
+    # then winsorise the remaining tails at 1% within each pool kind
     for c in ("entry_impact", "ret_1h", "ret_24h"):
-        lo, hi = cells[c].quantile([0.005, 0.995]); cells[c] = cells[c].clip(lo, hi)
+        for k, idx in cells.groupby("kind").groups.items():
+            lo, hi = cells.loc[idx, c].quantile([0.01, 0.99]); cells.loc[idx, c] = cells.loc[idx, c].clip(lo, hi)
+    log(f"{n_jump:,} cells dropped for a >3x price jump at entry; {len(cells):,} cells kept")
     cells["sided"] = np.where(cells.one_sided >= 0.85, "one-sided", "two-sided")
     cells.to_csv(os.path.join(os.path.dirname(__file__), "..", "data", f"outcome_cells_{FROM:%Y%m%d}_{TO:%Y%m%d}.csv.gz"), index=False, compression="gzip")
     log(f"{len(cells):,} cells scored")
@@ -116,7 +132,9 @@ def main():
              f"(volume bots excluded), {cells.pool.nunique():,} pools. Numbers in basis points; medians unless marked mean. "
              f"`impact` is the price paid at entry relative to the last price before the minute, signed so positive = paid more. "
              f"`ret1h`/`ret24h` are the mark-to-market return of the trade one hour and one day later, positive = profit. "
-             f"Tails winsorised at 0.5%/99.5%. Cells with fewer than {MIN_CELLS} rows are hidden.\n"]
+             f"Prices are volume-weighted per minute (token1 moved / token0 moved), not per-swap ratios, so dust swaps cannot distort them. "
+             f"Pools quoting copycat tokens, static zero-fee pools and pools with unknown tokens are excluded. Cells whose entry price is more than 3x from the pool's price a minute earlier are dropped ({n_jump:,}). "
+             f"Returns are bounded to [-100%, +1000%], then winsorised at 1%/99% within each pool kind. Cells with fewer than {MIN_CELLS} rows are hidden. Second version, 19 Oct 2026.\n"]
     def md(df_):
         cols = list(df_.columns); hdr = "| " + " | ".join([" / ".join(map(str, df_.index.names))] + cols) + " |"
         sep = "|" + "---|" * (len(cols) + 1)
