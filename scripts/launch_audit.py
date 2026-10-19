@@ -50,7 +50,9 @@ WITH tok AS (
 )
 (SELECT token, symbol, pools, swaps, first_seen FROM act WHERE swaps >= %(min_swaps)s ORDER BY swaps DESC LIMIT %(top)s)
 UNION
-(SELECT token, symbol, pools, swaps, first_seen FROM act WHERE upper(symbol) = ANY(%(symbols)s))
+(SELECT token, symbol, pools, swaps, first_seen FROM (
+    SELECT act.*, row_number() OVER (PARTITION BY upper(symbol) ORDER BY swaps DESC) AS rn FROM act WHERE upper(symbol) = ANY(%(symbols)s)) x
+ WHERE rn <= 2)   -- a launch name gets copied; keep the two busiest contracts per requested symbol
 ORDER BY swaps DESC
 """
 
