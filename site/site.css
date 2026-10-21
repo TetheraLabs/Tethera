@@ -34,6 +34,10 @@ img{max-width:100%}
 .eyebrow{font-size:15px;letter-spacing:.12em;text-transform:lowercase;color:var(--raddle);font-weight:400;font-family:"IM Fell English SC",Georgia,serif}
 
 /* nav */
+nav.bar{position:sticky;top:0;z-index:6;background:var(--bg);border-bottom:1px solid var(--rule);padding-block:10px;margin-top:-1px}
+nav.bar .wordmark{font-size:26px} nav.bar .wordmark .mark{height:26px;width:26px}
+nav.bar ul{font-size:16px;gap:18px}
+@media (max-width:860px){nav.bar ul{top:56px}}
 nav{position:relative;z-index:3;display:flex;justify-content:space-between;align-items:center;gap:18px;padding-block:22px;color:var(--fg)}
 nav.on-image{position:absolute;inset:0 0 auto 0;color:#f1eee8;left:50%;transform:translateX(-50%);width:100%}
 nav .wordmark{font-family:"UnifrakturMaguntia","Grenze Gotisch",serif;font-weight:400;font-size:34px;letter-spacing:.01em;line-height:1;text-decoration:none;display:flex;align-items:center;gap:10px}

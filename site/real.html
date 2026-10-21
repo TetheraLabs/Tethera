@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The real list · Tethera</title>
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="site.css?v=20261019c">
+<style>
+  .tblwrap{overflow-x:auto;margin-top:18px}
+  table.stats{width:100%;border-collapse:collapse;font-size:14px}
+  table.stats th,table.stats td{padding:9px 10px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top;white-space:nowrap}
+  table.stats th{font-family:"IM Fell English SC",serif;font-weight:400;font-size:15px;color:var(--fg-2)}
+  table.stats td.r,table.stats th.r{text-align:right;font-variant-numeric:tabular-nums}
+  table.stats tr.new td:first-child::after{content:" new";font-size:11px;color:var(--raddle);font-family:"IBM Plex Mono",monospace;vertical-align:super}
+  .v{font-family:"Grenze Gotisch",Georgia,serif;font-size:16px}
+  .v.printed,.v.fresh,.v.concentrated{color:var(--raddle)} .v.organic{color:var(--moss)} .v.none{color:var(--fg-2);font-size:13px;font-family:"IBM Plex Mono",monospace}
+  .gate{margin-top:22px;padding:18px 20px;border:1px solid var(--rule);border-radius:8px;background:var(--card)}
+  .gate button,.filters button{font:inherit;font-family:"Grenze Gotisch",Georgia,serif;font-size:18px;padding:8px 16px;border:0;border-radius:6px;background:var(--raddle);color:#fff;cursor:pointer}
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px;align-items:center}
+  .filters button{background:transparent;color:var(--fg);border:1px solid var(--rule);font-size:16px}
+  .filters button.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+  .status{color:var(--fg-2);font-family:"IBM Plex Mono",monospace;font-size:14px;margin-top:14px}
+  .keybox{font-family:"IBM Plex Mono",monospace;font-size:13px;word-break:break-all;margin-top:8px}
+</style>
+</head>
+<body>
+<nav class="wrap">
+  <a class="wordmark" href="index.html"><img class="mark" src="logo-mono.svg" alt="" width="100" height="100">Tethera</a>
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
+  <ul><li><a href="index.html#herding">Herding</a></li><li><a href="index.html#how">How it works</a></li><li><a href="index.html#products">Products</a></li><li><a href="index.html#live">Live</a></li><li><a href="real.html">The list</a></li><li><a href="herds.html">Herds</a></li><li><a href="check.html">Check a token</a></li><li><a href="wallet.html">Check a wallet</a></li><li><a href="method.html">Method</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="index.html#about">About</a></li></ul>
+</nav>
+<header class="pagehead">
+  <div class="wrap">
+    <p class="eyebrow">The real list</p>
+    <h1>What is actually trading.</h1>
+    <p class="lede">Every token on Robinhood Chain, ranked by swaps with the self-cancelling trades taken out. Beside each: how much of it was software, how much of the reported volume was printed, how many wallets were there, and the audit verdict. Rebuilt every hour.</p>
+    <div class="filters" id="filters">
+      <button type="button" data-h="24" class="on">Last 24 hours</button><button type="button" data-h="168">Last 7 days</button>
+      <span style="width:12px"></span>
+      <button type="button" data-k="" class="on">All</button><button type="button" data-k="stock">Stock tokens</button><button type="button" data-k="other">Everything else</button><button type="button" data-n="1">New in window</button>
+    </div>
+    <p class="status" id="status">Loading…</p>
+  </div>
+</header>
+<section class="s">
+  <div class="wrap">
+    <div class="tblwrap"><table class="stats"><thead><tr><th>#</th><th>token</th><th>kind</th><th class="r">organic swaps</th><th class="r">wallets</th><th class="r">software</th><th class="r">printed</th><th class="r">organic volume</th><th>verdict</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div class="gate" id="gate" hidden>
+      <p class="eyebrow">The rest of the list</p>
+      <p>The top ten are free. A key opens the whole list (<span id="total"></span> tokens), the filters, the seven-day view and the CSV. It is free, takes one click, and needs no account or email.</p>
+      <button type="button" id="getkey">Get a free key</button> <span class="status" id="keystatus"></span>
+      <div class="keybox" id="keybox" hidden></div>
+    </div>
+    <p class="note" id="csv" hidden><a id="csvlink" href="#">Download this list as CSV</a> · your key is kept in this browser only; <a href="#" id="forget">forget it</a>.</p>
+    <p class="note">Ranked by organic swaps. "Printed" is the share of USDG volume that cancelled itself inside single transactions. "Software" is the share of swaps from wallets labelled automated by the seven-day behavioural rule on the <a href="method.html">Method</a> page. The verdict is the seven-day audit when it is under a day old; open a token to run one now. Raw data: <code>api.tetheralabs.com/v1/tokens</code>.</p>
+  </div>
+</section>
+<footer>
+  <div class="wrap">
+    <span>Tethera Labs · Robinhood Chain · <a href="https://github.com/TetheraLabs/Tethera">github.com/TetheraLabs</a></span>
+    <span>Illustrations: Tethera Labs, 2026</span>
+  </div>
+</footer>
+<script>
+(function(){
+  var m=document.querySelector('nav .menu'),u=document.querySelector('nav ul');
+  if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)});
+    u.addEventListener('click',function(e){if(e.target.tagName==='A'){u.classList.remove('open');m.setAttribute('aria-expanded',false)}})}
+  var API='https://api.tetheralabs.com',h=24,k='',n=false,key=null;
+  try{key=localStorage.getItem('tethera_key')}catch(e){}
+  var st=document.getElementById('status'),rows=document.getElementById('rows'),gate=document.getElementById('gate'),csv=document.getElementById('csv');
+  function pct(x){return x==null?'–':Math.round(x*100)+'%'}
+  function usd(x){return x==null?'–':(x>=1e6?'$'+(x/1e6).toFixed(1)+'M':'$'+Math.round(x).toLocaleString('en-GB'))}
+  function cls(v){if(!v)return 'none';return v.indexOf('printed')>=0?'printed':v.indexOf('fresh')>=0?'fresh':v.indexOf('concentrated')>=0?'concentrated':v==='organic'?'organic':''}
+  function load(){
+    st.textContent='Loading…';
+    var q=API+'/v1/tokens?hours='+h+(k?'&kind='+k:'')+(n?'&new=true':'');
+    fetch(q,{headers:key?{'X-Tethera-Key':key}:{}}).then(function(r){if(!r.ok)throw new Error('The list could not be loaded ('+r.status+').');return r.json()}).then(function(d){
+      rows.innerHTML=d.rows.map(function(r){return '<tr'+(r.new_in_window?' class="new"':'')+'><td>'+r.rank+'</td><td><a href="check.html#'+r.token+'">'+(r.symbol||r.token.slice(0,10)+'…')+'</a>'+(r.official_stock_token?' <span class="eyebrow">official</span>':'')+'</td><td>'+(r.kind==='stock'?'stock':r.kind==='other'?'token':r.kind)+'</td><td class="r">'+r.organic_swaps.toLocaleString('en-GB')+'</td><td class="r">'+r.wallets.toLocaleString('en-GB')+'</td><td class="r">'+pct(r.automated_swap_share)+'</td><td class="r">'+pct(r.printed_share)+'</td><td class="r">'+usd(r.organic_volume_usd)+'</td><td><span class="v '+cls(r.verdict)+'">'+(r.verdict||'open to audit')+'</span></td></tr>'}).join('');
+      st.textContent=(d.gated?'Top '+d.rows.length+' of '+d.total:d.rows.length+' of '+d.total)+' tokens · built '+d.generated_at.replace('T',' ').slice(0,16)+' UTC';
+      gate.hidden=!d.gated; document.getElementById('total').textContent=d.total;
+      csv.hidden=d.gated; if(!d.gated){document.getElementById('csvlink').href=API+'/v1/tokens.csv?hours='+h}
+    }).catch(function(e){st.textContent=e.message});
+  }
+  document.getElementById('filters').addEventListener('click',function(e){
+    var b=e.target.closest('button');if(!b)return;
+    if(b.dataset.h){h=+b.dataset.h;Array.prototype.forEach.call(document.querySelectorAll('[data-h]'),function(x){x.classList.toggle('on',x===b)})}
+    else if(b.dataset.k!=null){k=b.dataset.k;n=false;Array.prototype.forEach.call(document.querySelectorAll('[data-k],[data-n]'),function(x){x.classList.toggle('on',x===b)})}
+    else if(b.dataset.n){n=!n;b.classList.toggle('on',n)}
+    if(!key&&(k||n||h!==24)){st.textContent='Filters and the seven-day view need a key; the button below gives a free one.';gate.hidden=false;return}
+    load();
+  });
+  document.getElementById('getkey').addEventListener('click',function(){
+    var ks=document.getElementById('keystatus');ks.textContent='Making one…';
+    fetch(API+'/v1/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label:'site'})}).then(function(r){if(r.status===429)throw new Error('This address has made three keys today.');if(!r.ok)throw new Error('Could not make a key ('+r.status+').');return r.json()}).then(function(d){
+      key=d.key;try{localStorage.setItem('tethera_key',key)}catch(e){}
+      ks.textContent='Done. Your key, shown once:';var kb=document.getElementById('keybox');kb.hidden=false;kb.textContent=key;load();
+    }).catch(function(e){ks.textContent=e.message});
+  });
+  document.getElementById('forget').addEventListener('click',function(e){e.preventDefault();key=null;try{localStorage.removeItem('tethera_key')}catch(x){}h=24;k='';n=false;load()});
+  document.getElementById('csvlink').addEventListener('click',function(e){
+    e.preventDefault();fetch(API+'/v1/tokens.csv?hours='+h,{headers:{'X-Tethera-Key':key}}).then(function(r){return r.blob()}).then(function(b){var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='tethera-real-list-'+h+'h.csv';a.click()});
+  });
+  load();
+})();
+</script>
+</body>
+</html>

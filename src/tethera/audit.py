@@ -137,7 +137,11 @@ def audit_token(address: str, days: float = 7, ttl_minutes: int = 30, conn=None)
         out = {k: (float(v) if isinstance(v, Decimal) else v) for k, v in out.items()}
         out["verdict"] = verdict(out, new_token)
         conn.execute("INSERT INTO token_audits (token, days, result) VALUES (%s, %s, %s) ON CONFLICT (token, days) DO UPDATE SET result = EXCLUDED.result, computed_at = now()",
-                     (tok, days, json.dumps(out, default=float))); conn.commit()
+                     (tok, days, json.dumps(out, default=float)))
+        conn.execute("""INSERT INTO token_audit_history (token, days, verdict, swaps, wallets, automated_swap_share, printed_share, fresh_wallet_share, top10_share, organic_volume_usd)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING""",
+                     (tok, days, out["verdict"], out["swaps"], out["wallets"], out["automated_swap_share"], out["printed_share"], out["fresh_wallet_share"], out["top10_share"], out["organic_volume_usd"]))
+        conn.commit()
         return out
     finally:
         if own: conn.close()

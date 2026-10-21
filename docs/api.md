@@ -138,6 +138,35 @@ The behavioural fingerprint of one wallet: what it behaves like, not what it is.
 - Sizing: `round_amount_frac`, `repeat_amount_frac`; `log_size_median` and `log_size_iqr` are log10 of the trade size in token1 units and are only measured where token1 is a stable coin, else null.
 - Behaviour: `reactive_share` (swaps that follow another wallet's swap in the same pool within two blocks), `round_trips_per_100`, `multi_pool_per_100` (blocks with swaps in more than one pool), `net_flow_frac` (|net| ÷ gross token0, 0 is pure churn).
 
+## GET /v1/wallet/{address}/profile
+
+A reputation profile of any address that has swapped on the chain's Uniswap pools, not only labelled ones. It says what the address has done here, never who holds it. `404` when we hold no swaps from it.
+
+```json
+{
+  "wallet": "0x…",
+  "first_seen": "2026-07-03T09:12:41+00:00",
+  "first_seen_is_exact": true,
+  "age_days": 109.5,
+  "transactions_on_chain": 33490,
+  "swaps_all_time_since_july": 18211,
+  "last_10_days": {"swaps": 507, "pools": 65, "automated_swaps": 507, "self_cancelling_swaps": 0,
+                   "last_swap": "2026-10-19T21:06:54+00:00",
+                   "pools_entered_within_an_hour_of_creation": 18, "pools_with_known_creation": 52},
+  "labels": {"is_automated": true, "is_volume_bot": false, "is_registered_agent": false, "is_contract": false,
+             "signals": ["sub_second_gap", "fast_round_trips", "computed_sizes"], "labelled_at": "…"},
+  "behaviour": {"archetype": "seconds-apart cadence, some stock pools, uniform ticket sizes, large tickets",
+                "family_size": 3, "cluster_size": 3, "closest_partners": [{"wallet": "0x…", "minutes_together": 41, "jaccard": 0.62}]},
+  "flags": ["automated", "early_in_launches", "in_a_family"],
+  "reading": "Labelled automated by its swap pattern over the last week; entered five or more pools within an hour of their creation in the last ten days; keeps trading the same pool, minute and side as other wallets."
+}
+```
+
+- `first_seen` is exact from 1 July 2026 once the wallet-age table is built from the archive (`first_seen_is_exact` true); until then it is the earliest swap in the live table, about ten days.
+- `transactions_on_chain` is the address's transaction count from the chain, cached for seven days.
+- `pools_entered_within_an_hour_of_creation` counts pools where the address's first swap came within 36,000 blocks (about an hour) of the pool's creation, over the live window.
+- Flags, each with a fixed meaning: `contract` (the address has code), `registered_agent` (ERC-8004), `automated` and `volume_bot` (the nightly labels), `fresh` (first seen within 7 days and at most 3 transactions), `early_in_launches` (five or more early pool entries), `in_a_family` (a family or cluster of three or more), `self_cancelling` (30% or more of its swaps). `reading` is the flags in a sentence.
+
 ## GET /v1/pool/{pool}
 
 Trust profile of one pool over the last 7 days: what traded, how much of it was real, and who was there. `pool` is the v2/v3 address or the 32-byte v4 pool id.
@@ -183,7 +212,7 @@ The bare paths `/crowding`, `/herds` and `/health` still work as aliases of the 
 
 ## MCP server
 
-The same calls (`crowding`, `herds`, `wallet`, `health`) as MCP tools over stdio, with descriptions written for an agent deciding whether to trade. Client configuration, with `__REPO__` replaced by the checkout path:
+The same calls (`crowding`, `herds`, `pool`, `wallet`, `wallet_profile`, `token`, `wait_for_calm`, `real_list`, `health`) as MCP tools over stdio, with descriptions written for an agent deciding whether to trade. Client configuration, with `__REPO__` replaced by the checkout path:
 
 ```json
 {
@@ -230,4 +259,4 @@ Send the key as `X-Tethera-Key`. Only a hash of it is stored. Paid tiers open wh
 
 ## MCP
 
-The same tools (`crowding`, `herds`, `pool`, `wallet`, `token`, `health`) are served over the Model Context Protocol at `https://api.tetheralabs.com/mcp` (streamable HTTP, no key needed; the anonymous rate limit applies). Add that URL to any MCP client. For a local install, `PYTHONPATH=src python -m tethera.mcp_server` runs the same server over stdio.
+The same tools (`crowding`, `herds`, `pool`, `wallet`, `wallet_profile`, `token`, `wait_for_calm`, `real_list`, `health`) are served over the Model Context Protocol at `https://api.tetheralabs.com/mcp` (streamable HTTP, no key needed; the anonymous rate limit applies). Add that URL to any MCP client. For a local install, `PYTHONPATH=src python -m tethera.mcp_server` runs the same server over stdio.

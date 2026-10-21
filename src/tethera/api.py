@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from tethera.audit import audit_token
 
-from . import db, signal, alerts, keys
+from . import db, signal, alerts, keys, rank, profile
 from .rpc import live_rpc
 
 HEALTH_LOG = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "health.jsonl")
@@ -26,7 +26,7 @@ UNLIMITED = {"/health", "/v1/health", "/docs", "/openapi.json", "/redoc"}
 
 @asynccontextmanager
 async def _lifespan(app):
-    alerts.start()
+    alerts.start(); rank.start()
     async with _mcp_app.router.lifespan_context(_mcp_app):
         yield
 
@@ -332,6 +332,98 @@ async def herd_alert_stream(request: Request):
     except ValueError: after_id = 0
     return StreamingResponse(alerts.astream(after_id), media_type="text/event-stream",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.get("/v1/tokens")
+def real_list(request: Request, hours: int = Query(24, description="24 or 168"), kind: str | None = Query(None, pattern="^(stock|other)$"),
+              new: bool = Query(False, description="Only tokens that first traded inside the window"), limit: int = Query(rank.MAX_ROWS, ge=1, le=rank.MAX_ROWS)):
+    """The real list: tokens ranked by organic swaps over the last 24 hours or 7 days, with printed share, automated share, wallets and the
+    audit verdict. The top ten are free; a key (X-Tethera-Key) opens the full list and the kind/new filters."""
+    if hours not in (24, 168):
+        raise HTTPException(422, "hours must be 24 or 168")
+    key = request.headers.get("x-tethera-key")
+    return rank.get(hours, keyed=bool(key and key_limit(key)), kind=kind, new_only=new, limit=limit)
+
+
+def _keyed(request: Request) -> bool:
+    key = request.headers.get("x-tethera-key")
+    return bool(key and key_limit(key))
+
+
+def _need_key(request: Request):
+    if not _keyed(request):
+        raise HTTPException(401, "this needs a key: POST /v1/keys gives a free one (header X-Tethera-Key)")
+
+
+@app.get("/v1/tokens.csv")
+def real_list_csv(request: Request, hours: int = Query(24)):
+    """The full real list as CSV. Needs a key."""
+    _need_key(request)
+    if hours not in (24, 168): raise HTTPException(422, "hours must be 24 or 168")
+    rows = rank.get(hours, keyed=True)["rows"]
+    cols = ["rank", "symbol", "kind", "token", "organic_swaps", "wallets", "pools", "automated_swap_share", "printed_share", "organic_volume_usd", "new_in_window", "first_seen", "verdict"]
+    body = ",".join(cols) + "\n" + "\n".join(",".join("" if r[c] is None else str(r[c]) for c in cols) for r in rows) + "\n"
+    return Response(body, media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=tethera-real-list-{hours}h.csv"})
+
+
+@app.get("/v1/token/{address}/history")
+def token_history(request: Request, address: str = TOKEN_PATH, days: int = Query(30, ge=1, le=365)):
+    """Every audit computed for this token over the last `days`: verdict and shares over time. Needs a key."""
+    _need_key(request)
+    with db.connect() as conn:
+        rows = conn.execute("""SELECT computed_at, days, verdict, swaps, wallets, automated_swap_share, printed_share, fresh_wallet_share, top10_share, organic_volume_usd
+                               FROM token_audit_history WHERE token = %s AND computed_at > now() - make_interval(days => %s) ORDER BY computed_at""", (address.lower(), days)).fetchall()
+    utc = lambda t: t.astimezone(timezone.utc).isoformat(timespec="minutes")
+    return {"token": address, "points": [{"at": utc(r[0]), "window_days": r[1], "verdict": r[2], "swaps": r[3], "wallets": r[4], "automated_swap_share": r[5],
+                                          "printed_share": r[6], "fresh_wallet_share": r[7], "top10_share": r[8], "organic_volume_usd": float(r[9]) if r[9] is not None else None} for r in rows]}
+
+
+@app.get("/v1/calm")
+def wait_for_calm(pool: str = POOL, direction: str = DIRECTION, max_wait: int = Query(60, ge=0, le=120, description="Seconds to wait for the herd on your side to clear")):
+    """Wait-for-calm: returns as soon as your side of the pool is not a herd, or after max_wait seconds with the crowding as it stands.
+    Use it as an order parameter: call, then trade when `calm` is true. Herds on this chain usually clear within a minute."""
+    deadline = time.time() + max_wait
+    while True:
+        c = _crowding(pool, direction, None)
+        calm = c["verdict"] != "herd"
+        if calm or time.time() >= deadline:
+            c["calm"] = calm; c["waited_seconds"] = round(max_wait - max(0.0, deadline - time.time()), 1)
+            return c
+        time.sleep(5)
+
+
+@app.get("/v1/wallet/{address}/exposure")
+def wallet_exposure(address: str = Path(..., min_length=42, max_length=42, pattern="^0x[0-9a-fA-F]{40}$"), days: int = Query(7, ge=1, le=30)):
+    """Crowding exposure of one wallet: how many of its swaps landed in a herd minute, with the herd or against it."""
+    with db.connect() as conn:
+        conn.execute("SET statement_timeout = '60s'")
+        row = conn.execute("""
+            WITH my AS (SELECT s.pool, date_trunc('minute', s.block_time) AS minute, s.direction FROM swaps s
+                        WHERE lower(s.tx_from) = %s AND s.block_time > now() - make_interval(days => %s) AND NOT s.self_cancel),
+                 j AS (SELECT my.*, pm.auto_wallets AS same, coalesce(o.auto_wallets, 0) AS opp
+                       FROM my LEFT JOIN pool_minutes pm ON pm.pool = my.pool AND pm.minute = my.minute AND pm.direction = my.direction
+                       LEFT JOIN pool_minutes o ON o.pool = my.pool AND o.minute = my.minute AND o.direction <> my.direction)
+            SELECT count(*), count(*) FILTER (WHERE same >= 15 AND opp <= 0.15 * same), count(*) FILTER (WHERE opp >= 15 AND same <= 0.15 * opp),
+                   count(DISTINCT pool), avg(same) FILTER (WHERE same IS NOT NULL)
+            FROM j""", (address.lower(), days)).fetchone()
+    n, with_herd, against_herd, pools, avg_same = row
+    if not n:
+        raise HTTPException(404, "no swaps for this wallet in the window")
+    return {"wallet": address, "window_days": days, "swaps": n, "pools": pools,
+            "swaps_inside_a_herd_same_side": with_herd, "swaps_against_a_herd": against_herd,
+            "share_with_herd": round(with_herd / n, 4), "share_against_herd": round(against_herd / n, 4),
+            "mean_automated_wallets_on_your_side": round(float(avg_same), 1) if avg_same is not None else None,
+            "note": "A herd minute has 15+ automated wallets one way and at most 15% of that the other way. Measured price impact of herds is small in the main pools "
+                    "(see the outcome study on the Method page); this tells you how often you are in one, not what it cost."}
+
+
+@app.get("/v1/wallet/{address}/profile")
+def wallet_profile_route(address: str = Path(..., min_length=42, max_length=42, pattern="^0x[0-9a-fA-F]{40}$")):
+    """Reputation profile of any wallet: age, transaction count, labels, family, early entries into new pools, and plain-words flags."""
+    out = profile.wallet_profile(address)
+    if out is None:
+        raise HTTPException(404, "no swaps from this address in anything we hold")
+    return out
 
 
 @app.get("/v1/keys/tiers")

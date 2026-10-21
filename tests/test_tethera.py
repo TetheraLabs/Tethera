@@ -1,3 +1,4 @@
+import re
 """Smoke and invariant tests against the running stack on this machine.
 
 They need the API on 127.0.0.1:18790 and the Postgres database; nothing is mocked, because what we want to know is
@@ -44,7 +45,7 @@ def busy_token(db):
 def test_health(client):
     r = client.get("/v1/health"); assert r.status_code == 200
     j = r.json(); assert j["swaps_last_5_min"] > 0 and j["lag_seconds"] is not None and j["latest_swap"].endswith("+00:00")
-    assert "jobs" not in json.dumps(j) and "/Volumes" not in json.dumps(j)      # nothing internal leaks
+    assert "jobs" not in json.dumps(j) and not re.search(r'"/[A-Za-z]+/[^"]*"', json.dumps(j))      # no internal paths leak
 
 def test_cors(client):
     r = client.get("/v1/health", headers={"Origin": "https://tetheralabs.com"})
@@ -76,6 +77,13 @@ def test_wallet(client, db):
     if not w: pytest.skip("no fingerprints yet")
     r = client.get(f"/v1/wallet/{w[0]}"); assert r.status_code == 200 and "signals" in r.json()
 
+def test_wallet_profile(client, db):
+    w = db.execute("SELECT tx_from FROM swaps WHERE block_time > now() - interval '1 day' LIMIT 1").fetchone()[0]
+    r = client.get(f"/v1/wallet/{w}/profile"); assert r.status_code == 200
+    j = r.json(); assert j["wallet"].lower() == w.lower() and "flags" in j and j["last_10_days"]["swaps"] >= 1 and j["reading"]
+    assert client.get("/v1/wallet/0x0000000000000000000000000000000000000001/profile").status_code == 404
+
+
 def test_series_and_flock(client):
     s = client.get("/v1/series", params={"hours": 24}).json(); assert 20 <= len(s["points"]) <= 25
     p = s["points"][-1]; assert set(("hour", "swaps", "automated_share", "herd_minutes")) <= set(p)
@@ -98,12 +106,31 @@ def test_keys(client, db):
     assert client.post("/v1/keys/paid", json={"tx_hash": "0x" + "1" * 64}).status_code in (503, 404, 422)
     db.execute("DELETE FROM api_keys WHERE label = 'pytest'"); db.commit()
 
+def test_real_list(client):
+    anon = httpx.get(f"{API}/v1/tokens", timeout=240).json()          # no key: gated
+    assert anon["gated"] is True and len(anon["rows"]) <= 10 and anon["total"] >= 10
+    full = client.get("/v1/tokens", params={"hours": 24}).json()      # keyed: full
+    assert full["gated"] is False and len(full["rows"]) > 10
+    r = full["rows"][0]; assert r["organic_swaps"] > 0 and 0 <= (r["automated_swap_share"] or 0) <= 1 and r["token"].startswith("0x")
+    stock = client.get("/v1/tokens", params={"hours": 24, "kind": "stock"}).json(); assert all(x["kind"] == "stock" for x in stock["rows"])
+    assert client.get("/v1/tokens", params={"hours": 48}).status_code == 422
+    csv = client.get("/v1/tokens.csv"); assert csv.status_code == 200 and csv.text.startswith("rank,symbol,")
+    assert httpx.get(f"{API}/v1/tokens.csv", timeout=60).status_code == 401
+
+def test_calm_history_exposure(client, busy_pool, busy_token, db):
+    c = client.get("/v1/calm", params={"pool": busy_pool, "direction": "buy0", "max_wait": 0}).json()
+    assert c["calm"] in (True, False) and c["verdict"] in {"clean", "busy", "herd"}
+    client.get(f"/v1/token/{busy_token}")                                   # makes sure one audit row exists
+    h = client.get(f"/v1/token/{busy_token}/history").json(); assert h["points"] and h["points"][-1]["verdict"]
+    w = db.execute("SELECT tx_from FROM swaps WHERE block_time > now() - interval '1 hour' AND NOT self_cancel LIMIT 1").fetchone()[0]
+    e = client.get(f"/v1/wallet/{w}/exposure").json(); assert e["swaps"] > 0 and 0 <= e["share_with_herd"] <= 1
+
 def test_mcp_over_http(client):
     h = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
     init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}}
     assert client.post("/mcp", json=init, headers=h).status_code == 200
     tools = client.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, headers=h).json()["result"]["tools"]
-    assert {"crowding", "herds", "pool", "wallet", "token", "health"} <= {t["name"] for t in tools}
+    assert {"crowding", "herds", "pool", "wallet", "token", "health", "wait_for_calm", "real_list", "wallet_profile"} <= {t["name"] for t in tools}
     r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "health", "arguments": {}}}, headers=h).json()
     assert "swaps_last_5_min" in r["result"]["content"][0]["text"]
 

@@ -8,7 +8,7 @@
 <link rel="icon" href="favicon.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="site.css?v=20261019b">
+<link rel="stylesheet" href="site.css?v=20261019c">
 <style>
   .viz{margin:22px 0 6px;background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:14px 16px}
   .viz svg{display:block;max-width:100%;height:auto}
@@ -28,7 +28,7 @@
 <nav class="wrap on-image">
   <a class="wordmark" href="index.html"><img class="mark" src="logo-mono.svg" alt="" width="100" height="100">Tethera</a>
   <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
-  <ul><li><a href="#herding">Herding</a></li><li><a href="#how">How it works</a></li><li><a href="#products">Products</a></li><li><a href="#live">Live</a></li><li><a href="check.html">Check a token</a></li><li><a href="method.html">Method</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="#about">About</a></li></ul>
+  <ul><li><a href="#herding">Herding</a></li><li><a href="#how">How it works</a></li><li><a href="#products">Products</a></li><li><a href="#live">Live</a></li><li><a href="real.html">The list</a></li><li><a href="herds.html">Herds</a></li><li><a href="check.html">Check a token</a></li><li><a href="wallet.html">Check a wallet</a></li><li><a href="method.html">Method</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="#about">About</a></li></ul>
 </nav>
 <header class="hero reveal" id="top">
   <div class="art">
@@ -55,6 +55,11 @@
   </div>
   <div class="caption">Yan, tan, tethera. Three, in the old Cumbrian sheep count.</div>
 </header>
+<nav class="wrap bar" aria-label="Sections">
+  <a class="wordmark" href="#top"><img class="mark" src="logo-mono.svg" alt="" width="100" height="100">Tethera</a>
+  <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
+  <ul><li><a href="#herding">Herding</a></li><li><a href="#how">How it works</a></li><li><a href="#products">Products</a></li><li><a href="#live">Live</a></li><li><a href="real.html">The list</a></li><li><a href="herds.html">Herds</a></li><li><a href="check.html">Check a token</a></li><li><a href="wallet.html">Check a wallet</a></li><li><a href="method.html">Method</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="#about">About</a></li></ul>
+</nav>
 
 <div class="band">
   <div class="wrap">
@@ -118,6 +123,7 @@
     <div class="steps3">
       <div><h3>Crowding check <span class="eyebrow">live · free</span></h3><p>One call before you trade. Pool and direction in; automated wallets each way in the last sixty seconds, pools moving the same way, where it sits in the pool's history, and a plain verdict. HTTP, or one line as an MCP tool for an agent.</p></div>
       <div><h3>Check a token <span class="eyebrow">live · free</span></h3><p>Paste a contract. Real against printed volume, bots against people, wallets born for the occasion, and a verdict. <a href="check.html">Try it</a>.</p></div>
+      <div><h3>Check a wallet <span class="eyebrow">live · free</span></h3><p>Paste any address. Age on the chain, transaction count, whether it trades like software, who it moves with, and how often it is in a pool's first hour. <a href="wallet.html">Try it</a>.</p></div>
       <div><h3>Pool trust and wallet fingerprint <span class="eyebrow">live</span></h3><p>For any pool: organic volume, printed volume, who printed it, herd minutes, real tokens or copies. For any wallet: archetype, signals, timing profile, nearest registered agents.</p></div>
       <div><h3>Crowding hook <span class="eyebrow">next · in test</span></h3><p>The v4 pool that charges the herd. Pool creators set the parameters; the automated-wallet set is public on-chain so anyone can audit who is in it.</p></div>
       <div><h3>Underwriting <span class="eyebrow">later</span></h3><p>Behavioural wallet histories that let lenders price credit to autonomous agents, with Tethera taking a share of the risk alongside them.</p></div>
@@ -170,8 +176,9 @@
 <script src="viz.js?v=20261019a" defer></script>
 <script>
 (function(){
-  var m=document.querySelector('nav .menu'),u=document.querySelector('nav ul');
-  if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)})}
+  Array.prototype.forEach.call(document.querySelectorAll('nav'),function(n){var m=n.querySelector('.menu'),u=n.querySelector('ul');
+    if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)})}
+    if(u){u.addEventListener('click',function(e){if(e.target.tagName==='A'){u.classList.remove('open');if(m)m.setAttribute('aria-expanded',false)}})}});
   /* latest issue teaser */
   fetch('warning/issues.json',{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){
     var i=(j.issues||[])[0]; if(!i)return;

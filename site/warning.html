@@ -7,13 +7,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=UnifrakturMaguntia&family=Grenze+Gotisch:wght@400;500;600;700&family=IM+Fell+English:ital@0;1&family=IM+Fell+English+SC&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <link rel="icon" href="favicon.png" type="image/png">
-<link rel="stylesheet" href="site.css?v=20261018d">
+<link rel="stylesheet" href="site.css?v=20261019c">
 </head>
 <body>
 <nav class="wrap">
   <a class="wordmark" href="index.html"><img class="mark" src="logo-mono.svg" alt="" width="100" height="100">Tethera</a>
   <button class="menu" type="button" aria-label="Menu" aria-expanded="false">Menu</button>
-  <ul><li><a href="index.html#herding">Herding</a></li><li><a href="index.html#how">How it works</a></li><li><a href="index.html#products">Products</a></li><li><a href="index.html#live">Live</a></li><li><a href="check.html">Check a token</a></li><li><a href="method.html">Method</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="index.html#about">About</a></li></ul>
+  <ul><li><a href="index.html#herding">Herding</a></li><li><a href="index.html#how">How it works</a></li><li><a href="index.html#products">Products</a></li><li><a href="index.html#live">Live</a></li><li><a href="real.html">The list</a></li><li><a href="herds.html">Herds</a></li><li><a href="check.html">Check a token</a></li><li><a href="wallet.html">Check a wallet</a></li><li><a href="method.html">Method</a></li><li><a href="warning.html">Shepherd's Warning</a></li><li><a href="index.html#about">About</a></li></ul>
 </nav>
 <header class="pagehead">
   <div class="wrap">
@@ -51,7 +51,8 @@
 <script>
 (function(){
   var m=document.querySelector('nav .menu'),u=document.querySelector('nav ul');
-  if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)})}
+  if(m&&u){m.addEventListener('click',function(){var o=u.classList.toggle('open');m.setAttribute('aria-expanded',o)});
+    u.addEventListener('click',function(e){if(e.target.tagName==='A'){u.classList.remove('open');m.setAttribute('aria-expanded',false)}})}
   var HAS_AUDIO=false;
   var sb=document.getElementById('sound');
   if(sb&&HAS_AUDIO){

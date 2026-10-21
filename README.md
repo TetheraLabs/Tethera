@@ -27,11 +27,11 @@ Services are restarted through the host's service manager; the followers and the
 
 **Health.** `curl localhost:18790/health` returns the lag in seconds and blocks, the endpoint in use and the last health-check result. `data/alerts.log` holds every problem the check has seen; a desktop notification is shown at most once per problem per hour.
 
-**MCP.** The crowding signal is also an MCP server over stdio for trading agents: `PYTHONPATH=__REPO__/src __REPO__/.venv/bin/python -m tethera.mcp_server`, with `__REPO__` the checkout path. Tools: `crowding`, `herds`, `wallet`, `health`. The client configuration snippet is in `docs/api.md`.
+**MCP.** The crowding signal is also an MCP server over stdio for trading agents: `PYTHONPATH=__REPO__/src __REPO__/.venv/bin/python -m tethera.mcp_server`, with `__REPO__` the checkout path. Tools: `crowding`, `herds`, `pool`, `wallet`, `wallet_profile`, `token`, `wait_for_calm`, `real_list`, `health`. The client configuration snippet is in `docs/api.md`.
 
 ## For agents
 
-- MCP over HTTP: `https://api.tetheralabs.com/mcp` (tools: crowding, herds, pool, wallet, token, health).
+- MCP over HTTP: `https://api.tetheralabs.com/mcp` (tools: crowding, herds, pool, wallet, wallet_profile, token, wait_for_calm, real_list, health).
 - Herd alerts: `GET /v1/alerts`, or `curl -N https://api.tetheralabs.com/v1/alerts/stream`.
 - Keys: `POST /v1/keys` for a free key; tiers at `GET /v1/keys/tiers`. See `docs/api.md`.
 

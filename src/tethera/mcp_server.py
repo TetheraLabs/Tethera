@@ -96,6 +96,37 @@ def wallet(address: str) -> dict:
 
 
 @mcp.tool()
+def wallet_profile(address: str) -> dict:
+    """Reputation profile of any wallet address, not only labelled ones: first seen on the chain (exact since July 2026),
+    age in days, transaction count, swaps and pools in the last ten days, the automated / volume-bot / registered-agent
+    labels, family and cluster size with closest partners, how many new pools it entered within an hour of creation,
+    and plain-words flags (contract, registered_agent, automated, volume_bot, fresh, early_in_launches, in_a_family,
+    self_cancelling) with a one-sentence reading. Use it to judge a counterparty, an airdrop claimant, or an early
+    buyer of a launch. Returns {"error": ...} when the address has never swapped here."""
+    from . import profile
+    out = profile.wallet_profile(address.strip())
+    return out if out is not None else {"error": "no swaps from this address in anything we hold"}
+
+
+@mcp.tool()
+def wait_for_calm(pool: str, direction: str, max_wait: int = 60) -> dict:
+    """Block until your side of the pool is not a herd, or until max_wait seconds (0 to 120) pass. Returns the crowding
+    reading with `calm` true or false and `waited_seconds`. Use it right before placing a swap when you have no urgency:
+    herds on this chain usually clear within a minute, and trading after one clears avoids filling into the crowd."""
+    from .api import wait_for_calm as w
+    return w(pool, direction, max(0, min(120, int(max_wait))))
+
+
+@mcp.tool()
+def real_list(hours: int = 24) -> dict:
+    """Tokens on Robinhood Chain ranked by real activity over the last 24 hours (or 168 for a week): organic swaps with
+    self-cancelling trades removed, wallets, automated share, printed share, USD volume where stablecoin-quoted, whether
+    the token is new, and the audit verdict. The top ten; the full list is at api.tetheralabs.com/v1/tokens with a key."""
+    from . import rank
+    return rank.get(168 if int(hours) >= 168 else 24, keyed=False)
+
+
+@mcp.tool()
 def health() -> dict:
     """Whether the signal is current: seconds and blocks since the last swap Tethera has seen.
 
