@@ -247,6 +247,12 @@ One-sided herd minutes as they are detected: 15+ automated wallets one way in on
 curl -N https://api.tetheralabs.com/v1/alerts/stream
 ```
 
+## Access by burning the token, and the desk record
+
+**GET /v1/keys/burn/message?wallet=0x…** returns the text to sign with a wallet that has burned the project token (sent it to `0x…dEaD`), the token address, the tiers in whole tokens, and `open` (false until the token exists). **POST /v1/keys/burn** with `{"wallet", "minute", "signature"}` (EIP-191 personal_sign of the message, valid fifteen minutes) reads the wallet's burns from the chain, excludes burns already spent on a key, and issues a 30-day key at the tier the unspent total buys. Burns are claimed atomically: one set of burns buys one key, a replayed request gets `422`, two simultaneous requests get one key and one `409`. Keys are bound to the wallet and are not transferable.
+
+**GET /v1/desk/record?since_id=0&limit=200** (key required) is the desk's decision record: one row per action on its paper account, with `at`, `strategy`, `symbol`, `action`, `size`, `price`, `reason` and `hash`. Rows are served after a delay (`delay_seconds`) and are **fingerprinted per key**: the seconds of `at` and the last cent of `price` carry a mark unique to the key. The hash covers the minute, strategy, symbol, action, size, reason and price to one decimal, chained to the previous row, so it verifies unchanged from a fingerprinted feed against the published ledger. The licence is personal or internal use; a key found redistributing the feed is revoked. This is a record of actions on a paper account, not advice.
+
 ## Keys and limits
 
 | caller | limit |

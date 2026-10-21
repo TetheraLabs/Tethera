@@ -450,6 +450,46 @@ def create_paid_key(tx_hash: str = Body(..., embed=True), label: str = Body("", 
     return JSONResponse(body, status_code=status)
 
 
+@app.get("/v1/keys/burn/message")
+def burn_message(wallet: str = Query(..., min_length=42, max_length=42, pattern="^0x[0-9a-fA-F]{40}$")):
+    """The text to sign with the wallet that burned the token. Valid for fifteen minutes."""
+    minute = int(time.time() // 60)
+    return {"wallet": wallet, "minute": minute, "message": keys.burn_message(wallet, minute), "token": keys.token(), "burn_to": keys.DEAD,
+            "tiers": keys.BURN_TIERS, "days": keys.BURN_DAYS, "open": keys.token() is not None,
+            "then": "POST /v1/keys/burn with {wallet, minute, signature}; the signature is EIP-191 personal_sign of the message"}
+
+
+@app.post("/v1/keys/burn")
+def create_burn_key(wallet: str = Body(..., embed=True, min_length=42, max_length=42), minute: int = Body(..., embed=True),
+                    signature: str = Body(..., embed=True, min_length=130, max_length=134), label: str = Body("", embed=True, max_length=64)):
+    """A 30-day key for a wallet that burned the project token: the burns are read from the chain, unspent burns pick the
+    tier, and the key is non-transferable and fingerprinted. Opens when the token exists."""
+    status, body = keys.create_burn(wallet, signature, minute, label)
+    if status >= 400:
+        raise HTTPException(status, body["error"])
+    return JSONResponse(body, status_code=status)
+
+
+RECORD_DELAY_S = int(os.environ.get("RECORD_DELAY_S", "900"))    # fifteen minutes until the solicitor sets the shape
+
+
+@app.get("/v1/desk/record")
+def desk_record(request: Request, since_id: int = Query(0, ge=0), limit: int = Query(200, ge=1, le=1000)):
+    """What the desk did: its decision record, one row per action, hash-chained, served with a delay and fingerprinted
+    per key. Needs a key. This is a record of actions taken on a paper account, not advice."""
+    _need_key(request)
+    with db.connect() as conn:
+        rows = conn.execute("""SELECT id, at, strategy, symbol, action, size, price, reason, record_hash FROM desk_record
+                               WHERE id > %s AND at <= now() - make_interval(secs => %s) ORDER BY id LIMIT %s""",
+                            (since_id, RECORD_DELAY_S, limit)).fetchall()
+    out = [{"id": r[0], "at": r[1].astimezone(timezone.utc).isoformat(timespec="seconds"), "strategy": r[2], "symbol": r[3], "action": r[4],
+            "size": r[5], "price": r[6], "reason": r[7], "hash": r[8]} for r in rows]
+    seed = keys.fingerprint_of(request.headers.get("x-tethera-key", ""))
+    return {"rows": keys.fingerprint(out, seed), "delay_seconds": RECORD_DELAY_S, "next_since_id": out[-1]["id"] if out else since_id,
+            "licence": "Personal or internal use; no redistribution. Rows are fingerprinted per key.",
+            "note": "A record of a paper account's actions. Each hash covers the minute, strategy, symbol, action, size, reason and price to one decimal, chained to the previous row, so it verifies from this feed against the published ledger."}
+
+
 # ---- series and the live flock, for the site's drawings. Cached in-process: these aggregate a million rows.
 _series_cache = {}
 

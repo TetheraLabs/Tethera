@@ -84,6 +84,40 @@ def test_wallet_profile(client, db):
     assert client.get("/v1/wallet/0x0000000000000000000000000000000000000001/profile").status_code == 404
 
 
+def test_burn_key_flow(client, db, monkeypatch):
+    """The library path in-process (the API runs out of process): a wallet signs the message, burns are read (stubbed),
+    one set of burns buys one key, a replay is refused; then the public endpoints: message open flag, record needs a key."""
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    from eth_account import Account
+    from eth_account.messages import encode_defunct
+    from tethera import keys
+    acct = Account.create()
+    monkeypatch.setattr(keys, "token", lambda: "0x1111111111111111111111111111111111111111")
+    tx = "0x" + __import__("secrets").token_hex(32)
+    monkeypatch.setattr(keys, "_burn_logs", lambda wallet: [(tx, 7, 150 * 10**18)])
+    minute = int(__import__("time").time() // 60); msg = keys.burn_message(acct.address, minute)
+    sig = Account.sign_message(encode_defunct(text=msg), acct.key).signature.hex(); sig = sig if sig.startswith("0x") else "0x" + sig
+    status, out = keys.create_burn(acct.address, sig, minute, "t"); assert status == 201, out
+    assert out["tier"] == "agent" and out["transferable"] is False and out["key"].startswith("tk_")
+    assert keys.create_burn(acct.address, sig, minute, "t")[0] == 422                 # same burns cannot buy a second key
+    assert keys.create_burn(Account.create().address, sig, minute, "t")[0] == 422     # signature from a different wallet
+    assert keys.create_burn(acct.address, sig, minute - 30, "t")[0] == 422           # stale message
+    assert keys.fingerprint_of(out["key"]) is not None
+    m = client.get(f"/v1/keys/burn/message?wallet={acct.address}").json(); assert "message" in m and m["open"] is False
+    assert httpx.get(API + "/v1/desk/record", timeout=30).status_code == 401
+    db.execute("DELETE FROM key_burns WHERE tx_hash = %s", (tx,)); db.execute("DELETE FROM api_keys WHERE wallet = %s", (acct.address,)); db.commit()
+
+
+def test_fingerprint_keeps_the_hash():
+    sys.path.insert(0, os.path.join(ROOT, "src"))
+    from tethera import keys
+    row = {"id": 9, "at": "2026-10-21T15:00:12+00:00", "strategy": "s", "symbol": "QQQ", "action": "enter_long", "size": 1.0, "price": 751.23, "reason": {"k": 1}}
+    h = keys.record_hash(row, "prev")
+    a, b = keys.fingerprint([row], 11)[0], keys.fingerprint([row], 12)[0]
+    assert keys.record_hash(a, "prev") == h == keys.record_hash(b, "prev")
+    assert (a["at"], a["price"]) != (b["at"], b["price"]) and keys.fingerprint([row], 11)[0] == a
+
+
 def test_series_and_flock(client):
     s = client.get("/v1/series", params={"hours": 24}).json(); assert 20 <= len(s["points"]) <= 25
     p = s["points"][-1]; assert set(("hour", "swaps", "automated_share", "herd_minutes")) <= set(p)
