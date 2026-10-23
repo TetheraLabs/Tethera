@@ -24,6 +24,10 @@ building blocks the desk's own strategies use and the evolutionary loop can comb
 - `MA_FAST`, `MA_SLOW` — periods of the fast and slow averages for a crossover. Ranges 5 to 50 and 20 to 300. Searched in the desk baselines.
 - `MA_TYPE` — simple, exponential or volume-weighted. Proposed.
 - `MA_SLOPE_MIN` — minimum slope of the slow average, in ATR per bar, for a trend to count. Range 0 to 0.2. Proposed.
+- `MA_PRICE_N`, `MA_PRICE_KIND`, `MA_PRICE_MODE` — price against a single average (EMA or SMA), followed or faded. Range 5 to 400. Composer family `ma_price`.
+- `MA_SLOPE_N`, `MA_SLOPE_K` — the direction of the average itself over the last K bars. Ranges 5 to 400 and 1 to 30. Composer family `ma_slope`.
+- `RIBBON_FAST`, `RIBBON_MID`, `RIBBON_SLOW` — three averages in order give the direction; mixed order is flat. Composer family `ma_ribbon`.
+- `PULLBACK_FAST`, `PULLBACK_SLOW`, `PULLBACK_HOLD` — with the slow average as the trend, a touch of the fast average is an entry for HOLD bars. Composer family `ma_pullback`.
 
 ### 1.2 MACD (Appel)
 
@@ -48,6 +52,7 @@ building blocks the desk's own strategies use and the evolutionary loop can comb
 - `BREAKOUT_N` — lookback for the channel; a close beyond it enters. Range 10 to 200. Searched in the desk baselines.
 - `BREAKOUT_EXIT_N` — a shorter channel for the exit (Turtle rules used 20 in, 10 out). Range 5 to 100. Proposed.
 - `BREAKOUT_CONFIRM_BARS` — bars price must hold beyond the channel. Range 0 to 3. Proposed.
+- `ORB_MINUTES`, `ORB_UNTIL_MIN`, `ORB_MIN_RANGE_ATR` — opening range breakout: the direction of the first ORB_MINUTES of the New York session, entered when they close and held until ORB_UNTIL_MIN (New York minutes) so the exit fills before the close; ranges narrower than ORB_MIN_RANGE_ATR average true ranges are skipped (Zarattini and Aziz 2023, reported Sharpe above 1 on QQQ with a stop). Ranges 5 to 60, 700 to 955, 0 to 1. Composer family `orb`, five and fifteen minute bars.
 
 ### 1.6 Average true range and volatility
 
@@ -72,12 +77,16 @@ building blocks the desk's own strategies use and the evolutionary loop can comb
 - `VWAP_ANCHOR` — session, week or a chosen swing. Proposed.
 - `VWAP_BAND_K` — band width in standard deviations of price around VWAP. Range 0.5 to 3. Proposed.
 - `VWAP_REVERT_Z`, `VWAP_REVERT_N` — fade stretches beyond this many standard deviations over this window. Ranges 1 to 3 and 20 to 120. Searched in the desk baselines (chain bars carry a true VWAP from fills).
+- `VWAP_CROSS_MODE` — side of the session VWAP, followed or faded. Composer family `vwap_cross`.
+- `VWAP_TARGET_Z`, `VWAP_TARGET_DONE` — VWAP as a liquidity target: when price is Z session deviations away, position toward VWAP; the signal fades to zero within DONE deviations, so VWAP is the target rather than a timing rule. Ranges 1 to 3 and 0.1 to 0.6. Composer family `vwap_target`.
+- `VWAP_BAND_K`, `VWAP_BAND_MODE` — from VWAP to its K-deviation band after a cross (to_band), or from the band back to VWAP (from_band). Range 0.8 to 3. Composer family `vwap_band`.
 
 ### 1.10 Pivot points and classical levels
 
 - `PIVOT_METHOD` — floor, Camarilla, Woodie or Fibonacci pivots. Proposed.
 - `PIVOT_TOL_ATR` — tolerance for price to count as at a pivot. Range 0.05 to 0.5. Proposed.
 - `ROUND_NUMBER_STEP` — spacing of round-number levels used as targets or stops. Proposed.
+- `LEVEL_TARGET_REACH`, `LEVEL_TARGET_KIND` — the previous day's or week's high and low as targets: within REACH average true ranges of a level not yet taken today, position toward it; flat once it is touched. Range 0.5 to 4. Composer family `level_target`.
 
 ### 1.11 Candlestick patterns
 
@@ -108,11 +117,13 @@ building blocks the desk's own strategies use and the evolutionary loop can comb
 - `MOM_LOOKBACK` — the formation period, in bars or days. Range 20 to 250. Proposed.
 - `MOM_SKIP` — the most recent bars skipped to avoid short-term reversal (the 12-minus-1 convention). Range 0 to 25. Proposed.
 - `TSMOM_VOL_SCALE` — size the position inversely to realised volatility (Moskowitz, Ooi and Pedersen). Rule. Proposed.
+- `HIGH52_DAYS`, `HIGH52_HI`, `HIGH52_LO` — nearness to the trailing high: buy above HI of it, sell below LO (George and Hwang 2004). Ranges 120 to 300 days, 0.9 to 0.99, 0.5 to 0.85. Composer family `high52`.
 
 ### 2.2 Short-term reversal and mean reversion
 
 - `MR_HALF_LIFE_MAX` — trade mean reversion only when the fitted half-life of deviations is below this many bars. Range 5 to 200. Proposed.
 - `MR_ENTRY_Z`, `MR_EXIT_Z` — entry and exit on the deviation z-score. Ranges 1 to 3 and 0 to 1. Proposed (see the Bollinger subsection).
+- `RSI2_N`, `RSI2_LO`, `RSI2_TREND_DAYS`, `RSI2_EXIT_DAYS`, `RSI2_SIDE` — buy a two-period RSI below LO while above the 200-day average, exit above the 5-day average (Connors and Alvarez 2009). Composer family `connors_rsi2`.
 
 ### 2.3 Intraday seasonality
 
@@ -120,6 +131,10 @@ building blocks the desk's own strategies use and the evolutionary loop can comb
 - `FIRST_N_MIN_EXCLUDE`, `LAST_N_MIN_EXCLUDE` — skip the opening and closing minutes. Ranges 0 to 60. Proposed.
 - `LUNCH_EXCLUDE` — skip 11:30 to 13:30 New York. Gate. Proposed (see the kill zones subsection).
 - `CLOSE_AUCTION_ALIGN` — align with the direction of the last thirty minutes' flow. Rule. Proposed.
+- `IM_FIRST_MIN`, `IM_LAST_MIN` — market intraday momentum: the first half-hour's return from the previous close sets the direction for the last half-hour (Gao, Han, Li and Zhou 2018). Ranges 15 to 60 each. Composer family `intraday_momentum`, five and fifteen minute bars.
+- `GAP_MIN_ATR`, `GAP_HOLD_MIN`, `GAP_MODE` — an opening gap of at least MIN_ATR average true ranges, continued or faded for HOLD_MIN minutes. Composer family `gap`.
+- `OPEN_DRIVE_MINUTES`, `OPEN_DRIVE_UNTIL` — the direction of the first minutes after the open, held until a New York minute. Composer family `open_drive`.
+- `SINCE_OPEN_START`, `SINCE_OPEN_END`, `SINCE_OPEN_MODE` — the sign of the move since the session open, expressed only inside a time window. Composer family `since_open_mom`.
 
 ### 2.4 Calendar effects
 
@@ -127,6 +142,8 @@ building blocks the desk's own strategies use and the evolutionary loop can comb
 - `FOMC_PRE_DRIFT` — long bias in the session before scheduled policy announcements. Rule. Proposed.
 - `OPEX_WEEK_FLAG` — options expiry week treated differently. Gate. Proposed.
 - `DOW_BIAS` — day-of-week biases (see the weekly profiles subsection for the gate chain's version). Proposed.
+- `TOM_BEFORE`, `TOM_AFTER` — turn of the month: long from BEFORE weekdays before month end through the first AFTER trading days (Ariel 1987; Lakonishok and Smidt 1988). Ranges 0 to 3 and 1 to 5. Composer family `turn_of_month`.
+- `HALLOWEEN_MODE` — long November to April, flat or short May to October (Bouman and Jacobsen 2002). Composer family `halloween`.
 
 ### 2.5 Volatility regimes
 
@@ -196,6 +213,7 @@ bias threshold is set separately for each, because conviction at the open differ
 
 - `TIME_STOP_BARS` — exit after this many bars if neither stop nor target is hit. Range 5 to 200. Proposed.
 - `TRAIL_ACTIVATE_R`, `TRAIL_DISTANCE_R` — start trailing after this many R of profit, at this distance. Ranges 0.5 to 2 and 0.5 to 2. Proposed.
+- `TIME_STOP_FLAT_AFTER` — no new positions after this New York minute; with the maximum hold it keeps intraday genomes flat into the close. Range 700 to 955. Composer family `time_stop`.
 
 ### 4.4 Execution on chain
 
@@ -302,6 +320,7 @@ must clear a threshold to allow longs (positive) or shorts (negative).
 - `BIAS_WEIGHTS[mor_direction]` — weight on the direction of the break from the midnight opening range. Range −2 to 2. Searched.
 - `BIAS_WEIGHTS[or_break_direction]` — weight on the direction of the break from the cash opening range. Range −2 to 2. Searched.
 - `TGT_DAILY_OPEN_W` — target weight on the daily open. Range 0 to 10. Weight. Searched.
+- `MIDNIGHT_OPEN_MODE` — price against the day's 00:00 New York open, followed or faded. Composer family `midnight_open`.
 
 ### 8.4 Opening gaps: new day, new week
 
@@ -397,6 +416,7 @@ must clear a threshold to allow longs (positive) or shorts (negative).
 - `KZ_EXPANSION_DAY_BONUS` — today's range is the largest so far this week. Range 0 to 3. Bonus. Searched.
 - `KZ_WEEKLY_OPEN_DISCOUNT_BONUS` — buying below the weekly open or selling above it. Range 0 to 3. Bonus. Searched.
 - `TGT_PWH_W`, `TGT_PWL_W` — target weights on the previous week's high and low. Range 0 to 10. Weight. Searched.
+- `WEEKLY_OPEN_MODE` — price against the week's open, followed or faded. Composer family `weekly_open`.
 
 ### 8.17 Session liquidity as targets
 

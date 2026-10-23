@@ -266,3 +266,11 @@ Send the key as `X-Tethera-Key`. Only a hash of it is stored. Paid tiers open wh
 ## MCP
 
 The same tools (`crowding`, `herds`, `pool`, `wallet`, `wallet_profile`, `token`, `wait_for_calm`, `real_list`, `health`) are served over the Model Context Protocol at `https://api.tetheralabs.com/mcp` (streamable HTTP, no key needed; the anonymous rate limit applies). Add that URL to any MCP client. For a local install, `PYTHONPATH=src python -m tethera.mcp_server` runs the same server over stdio.
+
+## Paper agents
+
+A registered strategy can run as a paper agent on the chain's own bars. Decisions are taken on the last completed bar of the agent's timeframe; fills are at the open of the next chain minute at the real on-chain price, plus a fixed slippage until a measured figure replaces it. These are paper books, not on-chain transactions, and every response says so.
+
+`GET /v1/desk/agents` — no key. Every live agent with its label (`candidate` or `survivor`), timeframe, instruments, the signal and filter families it is built from (names from the parameter dictionary), current equity, return since start, live position direction per instrument and the number of fills.
+
+`GET /v1/desk/agents/{id}` — no key for the equity marks. The fills behind them (time to the minute, instrument, action, target size, price, chained hash) are served with the record delay; a key holder sees them live. The strategy definition itself is never served here; access to it is through a burned key.

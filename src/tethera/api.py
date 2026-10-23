@@ -576,3 +576,43 @@ from mcp.server.transport_security import TransportSecuritySettings  # noqa: E40
 _mcp_app = mcp_server.mcp.streamable_http_app(streamable_http_path="/", stateless_http=True, json_response=True,
                                                transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))
 app.mount("/mcp", _mcp_app)
+
+
+# ---- paper agents: registered strategies running live on the chain feed (23 Oct 2026) ----
+@app.get("/v1/desk/agents")
+def desk_agents():
+    """The paper agents: one per registered strategy, priced from the chain's own bars. Equity and positions are live;
+    the fills behind them are served with the record delay (live to key holders). Paper books, not on-chain transactions."""
+    with db.connect() as conn:
+        rows = conn.execute("""SELECT a.id, a.name, a.label, a.engine, a.tf, a.symbols, a.notional, a.started, a.note, a.genome,
+                                      m.equity, m.at, (SELECT count(*) FROM desk_record r WHERE r.strategy = a.id)
+                               FROM desk_agents a LEFT JOIN LATERAL (SELECT equity, at FROM desk_agent_marks WHERE agent_id = a.id ORDER BY at DESC LIMIT 1) m ON true
+                               WHERE a.status = 'paper' ORDER BY a.started""").fetchall()
+        books = conn.execute("SELECT agent_id, symbol, position FROM desk_agent_book").fetchall()
+    pos = {}
+    for aid, sym, p in books: pos.setdefault(aid, {})[sym] = "long" if p > 0 else "short" if p < 0 else "flat"
+    out = []
+    for r in rows:
+        g = r[9] if isinstance(r[9], dict) else json.loads(r[9]); start = r[6] * len(r[5])
+        out.append({"id": r[0], "name": r[1], "label": r[2], "engine": r[3], "timeframe": r[4], "symbols": r[5], "started": r[7].astimezone(timezone.utc).isoformat(timespec="seconds"),
+                    "families": [c["family"] for c in g.get("signals", [])], "filters": [c["family"] for c in g.get("filters", [])],
+                    "equity": r[10], "return": (r[10] / start - 1) if r[10] is not None else None, "marked_at": r[11].astimezone(timezone.utc).isoformat(timespec="seconds") if r[11] else None,
+                    "positions": pos.get(r[0], {}), "fills": r[12], "note": r[8]})
+    return {"agents": out, "paper": True, "note": "Paper books priced from on-chain bars; fills at the next chain minute's open plus a fixed slippage until the measured number replaces it. Not on-chain transactions. Not advice."}
+
+
+@app.get("/v1/desk/agents/{agent_id}")
+def desk_agent(request: Request, agent_id: str = Path(..., min_length=3, max_length=40, pattern="^[a-z0-9-]+$"), marks: int = Query(500, ge=1, le=5000)):
+    """One agent: its equity marks, and its fills (delayed unless keyed). The strategy itself is not served here."""
+    delay = 0 if _keyed(request) else RECORD_DELAY_S
+    with db.connect() as conn:
+        a = conn.execute("SELECT id, name, label, engine, tf, symbols, notional, started, note FROM desk_agents WHERE id = %s", (agent_id,)).fetchone()
+        if not a: raise HTTPException(404, "no such agent")
+        mk = conn.execute("SELECT at, equity, detail FROM desk_agent_marks WHERE agent_id = %s ORDER BY at DESC LIMIT %s", (agent_id, marks)).fetchall()
+        fills = conn.execute("""SELECT id, at, symbol, action, size, price, record_hash FROM desk_record WHERE strategy = %s
+                                AND at <= now() - make_interval(secs => %s) ORDER BY id""", (agent_id, delay)).fetchall()
+    return {"id": a[0], "name": a[1], "label": a[2], "engine": a[3], "timeframe": a[4], "symbols": a[5], "notional_per_symbol": a[6],
+            "started": a[7].astimezone(timezone.utc).isoformat(timespec="seconds"), "note": a[8],
+            "marks": [{"at": m[0].astimezone(timezone.utc).isoformat(timespec="seconds"), "equity": m[1]} for m in reversed(mk)],
+            "fills": [{"id": f[0], "at": f[1].astimezone(timezone.utc).isoformat(timespec="minutes"), "symbol": f[2], "action": f[3], "size": f[4], "price": round(f[5], 2), "hash": f[6]} for f in fills],
+            "fills_delay_seconds": delay, "paper": True}
