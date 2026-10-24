@@ -28,3 +28,23 @@ site/private/
 data/backups/
 study/
 desk/
+
+# retired from the public tree on 24 Oct 2026 (kept on disk for the private study history)
+contracts/
+docs/hook_spec.md
+src/tethera/signal.py
+src/tethera/alerts.py
+src/tethera/rank.py
+src/tethera/audit.py
+src/tethera/mcp_server.py
+scripts/daily_warning.py
+scripts/shepherds_warning.py
+scripts/publish_issue.py
+scripts/outcome_study.py
+scripts/launch_audit.py
+scripts/lead_time_benchmark.py
+scripts/netting_simulator.py
+scripts/hook_fee_sim.py
+scripts/run_week2.py
+scripts/wash_check.py
+site/old/

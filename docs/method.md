@@ -1,60 +1,67 @@
-# Method: how Tethera classifies trading on Robinhood Chain
+# Method
 
-This is the rule book. The code that implements it is in this repository (`scripts/build_features.py`, `config/labels.toml`, `sql/017_self_cancelling.sql`, `scripts/fetch_token_meta.py`, `scripts/launch_audit.py`). Every number Tethera publishes is produced by these rules and can be re-run by anyone with a node and the code. Changes to the rules are listed at the end with their dates.
+Tethera is a systematic research desk for tokenised equities on Robinhood Chain. It searches for trading strategies automatically, scores them under a locked rule on years chosen before the search, validates them on years the search never saw, and keeps an append-only, hash-chained record of every trial, every improvement and every read of sealed data. The strategies are private; the protocol and the record are public. This page is the protocol. The chain data layer that produces the prices is in part B.
 
-## 1. What we read
+## Part A. The desk
 
-Every Uniswap v2, v3 and v4 swap on Robinhood Chain (chain 4663), decoded within seconds of the block, with the transaction's sender. We keep the last seven days hot and the full history since mainnet in an archive. Nothing is sampled.
+### 1. Prices
 
-## 2. What we remove before counting anything
+Every instrument is priced from the chain's own fills: every swap in every pool that pairs the official Robinhood stock token with USDG, aggregated into one-minute bars (`src/tethera/chain_bars.py`). Self-cancelling swaps are dropped; within a minute, prints more than 15% from that minute's median are dropped as bad fills. Anyone with the swap tables rebuilds the same bars; the rule is the SQL in that file and nothing else. Before the chain feed begins, the same instruments are carried by their own history, scaled forward only at the join so no past bar is ever rewritten by a level known later.
 
-- **Self-cancelling trades.** A transaction that swaps both ways in one pool, with both token amounts netting to under 1% of the gross. Under Uniswap v4's flash accounting such a transaction settles nothing. These swaps stay in our tables with a flag and are excluded from every aggregate, label, herd count and published volume. We report their size separately.
-- **Copycat tokens.** A symbol is cheap to copy. For the stock, stable and eth kinds, one token per symbol keeps the kind: the one in the most pools, earliest deployed on a tie. The rest are marked copies. A stablecoin must also sit in at least 20 pools. For stocks, Robinhood's own Stock Token registry is the authority: only its contracts count as official.
-- **Volume bots.** Wallets with no net position (net flow under 10% of gross), at least 80% of their swaps in one pool, and a fixed daily budget (daily volume coefficient of variation under 0.35 once active three days or more), over 20 or more swaps. They are automated, but they are not a herd, so they are excluded from herd counts.
+### 2. The year rule
 
-## 3. What makes a wallet "automated"
+Training years are a recency-weighted random draw of seven years from 2012 to 2025, with 2024 and 2025 always included; the draw's seed is written next to the run. The years the draw left out are validation years. 2026 is sealed: a registered candidate may read it once, on chain prices, and the ledger refuses a second read. Data that exists only on the chain (automated share, self-cancelling share, fleet presence) runs on a declared split of its own, three months of training and October 2026 for validation, and is labelled as such wherever it is shown.
 
-A wallet is judged on its last seven days of swaps, self-cancelling trades removed, and only if it has at least five of them. **One transaction is one trade**: an aggregator routes a person's single swap through several pools in one block, so timing is measured between transactions, never between the legs of one.
+### 3. Scoring
 
-Seven signals:
+A candidate's score is its mean yearly net return at 15 basis points one-way, multiplied by the share of training years that were positive. Every candidate is also run at 5 and 40 basis points. A floor on entries per year is a run setting, recorded with the run; in the baseline phase it is zero, so the search decides how often to trade. Fills are at the next bar's open. Nothing is ever selected on a raw Sharpe ratio.
 
-| signal | fires when | needs |
-|---|---|---|
-| several pools in one block | the wallet traded in more than one pool in one block, in separate transactions, at least once | |
-| sub-second gap | the shortest gap between two of its transactions is under 1.0 second | |
-| metronomic | its gaps between transactions are regular: coefficient of variation under 0.5 | 10+ swaps |
-| fast round trips | at least 3 buy-then-sell (or sell-then-buy) in the same pool within 30 seconds, in separate transactions | |
-| computed sizes | at most 5% of its amounts are round numbers | 10+ swaps |
-| reactive | at least half of its swaps land within two blocks after another wallet's swap in the same pool | 10+ swaps |
-| persistent | 20+ swaps over a span of at least 30 minutes with no idle stretch longer than 10 minutes | |
+### 4. Validation
 
-The first two signals count as one, because several pools in one block implies a zero gap (81% overlap in calibration). A wallet is **automated** when three or more independent signals fire. Nothing about the wallet's name, registry entry or contract code is used to make the label.
+When a search ends, its finalists, the best candidate of each distinct structure, are rescored once on the validation years. Each finalist's monthly returns give a deflated Sharpe ratio (Bailey and López de Prado) discounted by the number of candidates the run scored; the finalists together give a probability of backtest overfitting (Bailey, Borwein, López de Prado and Zhu) over yearly blocks. A survivor needs a positive training score, a positive validation mean year, at least half the validation years positive and a deflated Sharpe probability of 0.95. Survivors then face a stress battery, a parameter neighbourhood test, multiple seeds and the other instruments.
 
-## 4. What a herd is
+### 5. The ledger
 
-A **busy minute** is one pool, one minute, with fifteen or more automated wallets (volume bots excluded) on one side. A **herd** is a busy minute where the other side has at most 15% of that number. Two-sided busy minutes are usually arbitrage keeping the pool in line with other markets; they are counted and reported, but they are not herds.
+Every candidate any engine scores is one line in an append-only ledger. Every time a search's best moves, the step is logged with the parent, the mutation, the parameter diff and the score change. A candidate is registered by the hash of its definition before any sealed data is touched; the sealed read, the admission and any withdrawal are further lines. The desk record served by the API (`GET /v1/desk/record`) is hash-chained row to row; `scripts/verify_record.py` recomputes the chain from a served feed.
 
-## 5. What checks the labels
+### 6. The search engines
 
-- **The ERC-8004 agent registry is the test set, not the label.** Registered agents that trade are scored against the labels; they are never used to make them. Registered agents barely trade (57 of 8,792 at the time of writing), which is why a registry alone would miss almost every bot.
-- **Calibration after every full run**: for each signal, how often it fires among judged wallets, how often it fires alone on wallets sitting exactly on the threshold, and the overlap between signals. The current report is published with the weekly letter.
-- **Reproduction.** Pool ids, transaction ids and the window are given with every published number.
+Four engines score under the same rule: a structural search over a library of signal families drawn from the parameter dictionary (`docs/parameters.md`), a code-writing agent, a formula miner with a false-discovery gate, and a parameter search over an older strategy lineage. A research director reads the ledger and the trails once a day, reads the literature, proposes new families as code (each must pass a causality probe by truncation before it enters the library) and sets the next runs. It has no write access to the scorer, the year rule, the admission gate or the ledger, and their hashes are checked before and after each of its sessions.
 
-## 6. The launch audit
+### 7. Going live
 
-For a token over a window, in addition to the above: the share of wallets whose first swap in our data fell in this token's window; the share with exactly one swap; the largest batch of such wallets whose first swap landed in one ten-minute bucket; the ten busiest wallets' share of swaps; the share that only ever bought or only ever sold; and, from the chain itself, the share of wallets whose total transaction count fits inside the swaps we saw them make here plus two (a funding transfer and an approval), which we call **born for this**. Verdicts: organic, mixed, automated, fresh-wallet driven, printed. The rules for each are in the code and in the audit's own notes.
+No strategy appears on the paper board, the API or anywhere public until it is a survivor that has also passed the full battery. Paper agents are priced from the chain bars with a fixed slippage until a measured number replaces it; their fills enter the record. Real capital comes only after a paper record, and each fill then carries a transaction hash.
 
-## 7. Known limits
+### 8. Known limits
 
-- A wallet with fewer than five swaps in seven days is not judged. Launch bots that trade once are caught by the launch audit's fresh-wallet columns, not by the label.
-- Most automated labels sit exactly on the three-signal threshold, so rule changes move the count. We publish the count before and after every change.
-- A slow bot, one trade an hour, trips nothing.
-- "First swap in our data" is measured from 10 October 2026 until the archive is indexed; the on-chain transaction count does not have that limit.
-- The test set is small. We are building a larger labelled set of known bots and known human flows and will publish precision and recall when it exists.
+- Two instruments have history before 2026; the other eight are reachable only through the chain-native split, which is three months of training.
+- 15 basis points one-way is an assumption until slippage is measured on the chain's own fills.
+- Fills are at the next bar's open, so close-to-open (overnight) rules cannot yet be expressed.
+- Nothing has survived validation as of 24 October 2026. The record shows that too.
 
-## 8. Change log
+## Part B. The chain data layer
 
-- **14 Oct 2026.** First rules: seven signals, three to label, five swaps minimum, seven-day window.
-- **17 Oct 2026.** Volume-bot filter added; volume bots excluded from herd counts.
-- **18 Oct 2026.** Several-pools-in-one-block and sub-second-gap count as one signal (81% overlap). Self-cancelling trades flagged and excluded everywhere. One canonical token per symbol; stables need 20 pools; Robinhood's registry decides which stock tokens are official. The ten-minute job judges active wallets on the same seven-day window as the weekly run (it had been judging on six hours).
-- **19 Oct 2026.** One transaction is one trade: timing and round-trip signals no longer fire on the legs of a routed swap. Measured effect on the live week: automated wallets 11,830 → 6,613 of 247,391 judged; share of all swaps 43% → 35%; one-sided herd minutes about 1,540 a day before and after (herds are made by the large bots, which kept their label); busy minutes 6,800 → 5,960 a day; the hook simulation's surcharge unchanged at $803k on the week.
+### 1. What we read
+
+Every Uniswap v2, v3 and v4 swap on Robinhood Chain (chain 4663), decoded within seconds of the block, with the transaction's sender. The last fourteen days are kept hot and the full history since mainnet in an archive.
+
+### 2. What we remove before counting anything
+
+- **Self-cancelling trades.** A transaction that swaps both ways in one pool, with both token amounts netting to under 1% of the gross. Under Uniswap v4's flash accounting such a transaction settles nothing. These swaps are flagged and excluded from bars, volumes and labels.
+- **Copycat tokens.** For the stock, stable and eth kinds, one token per symbol keeps the kind: the one in the most pools, earliest deployed on a tie. The rest are marked copies.
+- **Volume bots.** Wallets with no net position, almost all their swaps in one pool, and a fixed daily budget.
+
+### 3. What makes a wallet "automated"
+
+A wallet is judged on its last seven days of swaps, self-cancelling trades removed, only if it has at least five of them. One transaction is one trade. Seven signals: several pools in one block, sub-second gap (these two count as one), metronomic gaps, fast round trips, computed sizes, reactive timing, persistence. Three or more independent signals make the label. The rules and thresholds are in `config/labels.toml` and `scripts/build_features.py`; the ERC-8004 agent registry is a test set for the labels, never an input to them. The automated share of a minute's swaps is one of the chain-native columns the desk searches.
+
+### 4. Wallet profiles
+
+`GET /v1/wallet/{address}/profile` gives any wallet's age, activity, labels, family and early entries into new pools, from our own tables. `GET /v1/wallet/{address}` gives the fingerprint behind an automated label.
+
+### 5. Change log
+
+- **14 to 19 Oct 2026.** Label rules, volume-bot filter, self-cancelling flag, one canonical token per symbol, one transaction is one trade.
+- **21 Oct 2026.** The desk: year rule, locked scorer, ledger, pre-registration, sealed 2026, access by burning the token.
+- **23 Oct 2026.** Structural search over the family library; baseline phase without a trade floor; improvement trail; paper-agent machinery (dormant until a survivor exists).
+- **24 Oct 2026.** Research director; chain-bar builder and record verifier published.

@@ -11,7 +11,6 @@ API = os.environ.get("TETHERA_API", "http://127.0.0.1:18790")
 DB = os.environ.get("DATABASE_URL", "postgresql://localhost/tethera")
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 ADDR = re.compile(r"^0x[0-9a-fA-F]{40}$")
-VERDICTS = {"organic", "mixed", "automated", "automated, concentrated", "fresh-wallet driven", "printed", "no activity"}
 
 @pytest.fixture(scope="session")
 def db():
@@ -34,11 +33,6 @@ def client(db):
 def busy_pool(db):
     return db.execute("SELECT pool FROM pool_minutes WHERE minute > now() - interval '1 day' GROUP BY 1 ORDER BY sum(swaps) DESC LIMIT 1").fetchone()[0]
 
-@pytest.fixture(scope="session")
-def busy_token(db):
-    return db.execute("""SELECT t.token FROM tokens t JOIN pools p ON p.token0 = t.token OR p.token1 = t.token
-                         JOIN pool_minutes m ON m.pool = p.pool AND m.minute > now() - interval '1 day'
-                         WHERE t.kind = 'other' GROUP BY 1 ORDER BY sum(m.swaps) DESC LIMIT 1""").fetchone()[0]
 
 # ---------------- API ----------------
 
@@ -51,26 +45,11 @@ def test_cors(client):
     r = client.get("/v1/health", headers={"Origin": "https://tetheralabs.com"})
     assert r.headers.get("access-control-allow-origin") == "*"
 
-def test_crowding(client, busy_pool):
-    r = client.get("/v1/crowding", params={"pool": busy_pool, "direction": "sell0"}); assert r.status_code == 200
-    j = r.json(); assert j["verdict"] in {"clean", "busy", "herd"} and j["auto_wallets_same"] >= 0
-    assert client.get("/v1/crowding", params={"pool": busy_pool, "direction": "sideways"}).status_code == 422
-
-def test_herds(client):
-    r = client.get("/v1/herds"); assert r.status_code == 200 and isinstance(r.json()["herds"], list)
-
 def test_pool_profile(client, busy_pool):
     r = client.get(f"/v1/pool/{busy_pool}"); assert r.status_code == 200
     j = r.json(); d = j["last_7_days"]
     assert j["token0"]["kind"] and d["swaps"] > 0 and 0 <= d["self_cancelling_share"] <= 1 and isinstance(j["flags"], list)
     assert client.get("/v1/pool/0x0000000000000000000000000000000000000001").status_code == 404
-
-def test_token_audit(client, busy_token):
-    r = client.get(f"/v1/token/{busy_token}"); assert r.status_code == 200
-    j = r.json(); assert j["verdict"] in VERDICTS and j["swaps"] > 0 and j["pools"] and j["automated_swap_share"] is not None
-    r2 = client.get(f"/v1/token/{busy_token}"); assert r2.json()["cached"] is True
-    assert client.get("/v1/token/0x0000000000000000000000000000000000000001").status_code == 404
-    assert client.get("/v1/token/notanaddress").status_code == 422
 
 def test_wallet(client, db):
     w = db.execute("SELECT wallet FROM wallet_fingerprints LIMIT 1").fetchone()
@@ -118,55 +97,13 @@ def test_fingerprint_keeps_the_hash():
     assert (a["at"], a["price"]) != (b["at"], b["price"]) and keys.fingerprint([row], 11)[0] == a
 
 
-def test_series_and_flock(client):
-    s = client.get("/v1/series", params={"hours": 24}).json(); assert 20 <= len(s["points"]) <= 25
-    p = s["points"][-1]; assert set(("hour", "swaps", "automated_share", "herd_minutes")) <= set(p)
-    f = client.get("/v1/flock").json(); assert "pools" in f and f["window_seconds"] == 60
-
-def test_badge(client, busy_token):
-    r = client.get(f"/v1/token/{busy_token}/badge.svg"); assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml")
-    assert "tethera" in r.text and "<svg" in r.text
-
-def test_alerts_and_stream(client):
-    j = client.get("/v1/alerts").json(); assert "alerts" in j and j["last_id"] >= 0
-    with client.stream("GET", "/v1/alerts/stream", timeout=10) as s:
-        first = next(s.iter_lines()); assert first.startswith("retry:")
-
 def test_keys(client, db):
     t = client.get("/v1/keys/tiers").json(); assert t["tiers"] and "open" in t
     r = client.post("/v1/keys", json={"label": "pytest"}); assert r.status_code == 201
     k = r.json()["key"]; assert k.startswith("tk_")
-    assert client.get("/v1/herds", headers={"X-Tethera-Key": k}).headers.get("x-ratelimit-limit") == "120"
+    assert client.get("/v1/keys/tiers", headers={"X-Tethera-Key": k}).headers.get("x-ratelimit-limit") == "120"
     assert client.post("/v1/keys/paid", json={"tx_hash": "0x" + "1" * 64}).status_code in (503, 404, 422)
     db.execute("DELETE FROM api_keys WHERE label = 'pytest'"); db.commit()
-
-def test_real_list(client):
-    anon = httpx.get(f"{API}/v1/tokens", timeout=240).json()          # no key: gated
-    assert anon["gated"] is True and len(anon["rows"]) <= 10 and anon["total"] >= 10
-    full = client.get("/v1/tokens", params={"hours": 24}).json()      # keyed: full
-    assert full["gated"] is False and len(full["rows"]) > 10
-    r = full["rows"][0]; assert r["organic_swaps"] > 0 and 0 <= (r["automated_swap_share"] or 0) <= 1 and r["token"].startswith("0x")
-    stock = client.get("/v1/tokens", params={"hours": 24, "kind": "stock"}).json(); assert all(x["kind"] == "stock" for x in stock["rows"])
-    assert client.get("/v1/tokens", params={"hours": 48}).status_code == 422
-    csv = client.get("/v1/tokens.csv"); assert csv.status_code == 200 and csv.text.startswith("rank,symbol,")
-    assert httpx.get(f"{API}/v1/tokens.csv", timeout=60).status_code == 401
-
-def test_calm_history_exposure(client, busy_pool, busy_token, db):
-    c = client.get("/v1/calm", params={"pool": busy_pool, "direction": "buy0", "max_wait": 0}).json()
-    assert c["calm"] in (True, False) and c["verdict"] in {"clean", "busy", "herd"}
-    client.get(f"/v1/token/{busy_token}")                                   # makes sure one audit row exists
-    h = client.get(f"/v1/token/{busy_token}/history").json(); assert h["points"] and h["points"][-1]["verdict"]
-    w = db.execute("SELECT tx_from FROM swaps WHERE block_time > now() - interval '1 hour' AND NOT self_cancel LIMIT 1").fetchone()[0]
-    e = client.get(f"/v1/wallet/{w}/exposure").json(); assert e["swaps"] > 0 and 0 <= e["share_with_herd"] <= 1
-
-def test_mcp_over_http(client):
-    h = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
-    init = {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": {"name": "t", "version": "0"}}}
-    assert client.post("/mcp", json=init, headers=h).status_code == 200
-    tools = client.post("/mcp", json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, headers=h).json()["result"]["tools"]
-    assert {"crowding", "herds", "pool", "wallet", "token", "health", "wait_for_calm", "real_list", "wallet_profile"} <= {t["name"] for t in tools}
-    r = client.post("/mcp", json={"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "health", "arguments": {}}}, headers=h).json()
-    assert "swaps_last_5_min" in r["result"]["content"][0]["text"]
 
 # ---------------- data invariants ----------------
 
@@ -204,27 +141,27 @@ def test_follower_is_current(db):
     lag = db.execute("SELECT extract(epoch FROM now() - max(block_time)) FROM swaps WHERE block_time > now() - interval '1 hour'").fetchone()[0]
     assert lag is not None and lag < 600, f"follower is {lag:.0f}s behind"
 
-# ---------------- publisher ----------------
 
-def test_publisher_round_trip(tmp_path):
-    sys.path.insert(0, os.path.join(ROOT, "scripts"))
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("pi", os.path.join(ROOT, "scripts", "publish_issue.py")); pi = importlib.util.module_from_spec(spec); spec.loader.exec_module(pi)
-    out = tmp_path / "out"; out.mkdir(); pi.OUT = str(out)
-    src = tmp_path / "issue.md"; src.write_text("---\ndate: 2030-01-01\ntitle: Test\nsummary: s\nkind: weekly\n---\n# H\n\nBody **bold**.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n")
-    (out / "notes.md").write_text("not an issue")        # must be ignored by the index
-    pi.main(str(src))
-    idx = json.loads((out / "issues.json").read_text())
-    assert len(idx["issues"]) == 1 and idx["issues"][0]["title"] == "Test"
-    assert (out / "2030-01-01.html").exists() and (out / "2030-01-01.csv").exists() and (out / "2030-01-01.pdf").stat().st_size > 1000
-    assert "<b>bold</b>" in (out / "2030-01-01.html").read_text()
 
-# ---------------- MCP ----------------
+# ---------------- desk ----------------
 
-def test_mcp_tools_answer():
+def test_agents_board_and_record_verify(client):
+    j = client.get("/v1/desk/agents").json(); assert j["paper"] is True and isinstance(j["agents"], list)
+    assert client.get("/v1/desk/agents/no-such-agent").status_code == 404
+    sys.path.insert(0, os.path.join(ROOT, "scripts")); sys.path.insert(0, os.path.join(ROOT, "src"))
+    import verify_record as V
+    from tethera.keys import record_hash, fingerprint
+    rows = []; prev = ""
+    for i in range(3):
+        r = {"id": i + 1, "at": f"2026-10-24T10:0{i}:00+00:00", "strategy": "s", "symbol": "QQQ", "action": "enter_long", "size": 1.0, "price": 700.1 + i, "reason": {"k": i}}
+        r["hash"] = record_hash(r, prev); prev = r["hash"]; rows.append(r)
+    assert V.verify(rows)[0] == [] and V.verify(fingerprint([dict(r) for r in rows], 5))[0] == []
+    rows[1]["size"] = 0.5; assert V.verify(rows)[0]
+
+def test_chain_bars_rule_is_public(db):
     sys.path.insert(0, os.path.join(ROOT, "src"))
-    import importlib; m = importlib.import_module("tethera.mcp_server")
-    h = m.health(); assert "swaps_last_5_min" in h
-    assert "herds" in m.herds()
-    assert m.pool("0x0000000000000000000000000000000000000001") == {"error": "unknown pool"}
-    assert m.token("0x0000000000000000000000000000000000000001") == {"error": "unknown token"}
+    from tethera.instruments import TOKENS
+    n = db.execute("SELECT count(DISTINCT symbol) FROM desk_bars_1m").fetchone()[0]
+    assert n <= len(TOKENS)
+    bad = db.execute("SELECT count(*) FROM desk_bars_1m WHERE low > high OR open > high OR close < low OR volume_usd < 0").fetchone()[0]
+    assert bad == 0
