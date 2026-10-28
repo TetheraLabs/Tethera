@@ -48,3 +48,7 @@ scripts/hook_fee_sim.py
 scripts/run_week2.py
 scripts/wash_check.py
 site/old/
+
+# local working rules for coding agents; never public
+CLAUDE.md
+.claude/

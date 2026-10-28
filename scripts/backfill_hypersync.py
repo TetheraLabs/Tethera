@@ -5,9 +5,9 @@ timestamp), so the whole history is a few tens of thousands of responses instead
 per block. Rows are written with COPY. Progress is recorded in `backfill_chunks` (one row per
 response range) inside the same transaction as the rows, so a restart resumes exactly where it stopped.
 
-For the full load the secondary indexes and the primary key are dropped first and rebuilt at the end
+For the full load the secondary indexes and the unique (block_number, log_index) key are dropped first and rebuilt at the end
 (random index inserts on a spinning disk are the slow part). While they are down the nightly
-archive job is unloaded, because archive_old_swaps() needs the primary key.
+archive job is unloaded, because the nightly move needs the unique key.
 
   --from BLOCK      first block (default 653325 = first block of 2026-07-01 UTC)
   --to BLOCK        last block (default: one below the oldest block already in swaps_archive)
@@ -49,7 +49,7 @@ INDEXES = {  # name -> rebuild statement
     "swaps_archive_pool_time_idx": "CREATE INDEX swaps_archive_pool_time_idx ON swaps_archive (pool, block_time) TABLESPACE tethera_archive",
     "swaps_archive_from_idx": "CREATE INDEX swaps_archive_from_idx ON swaps_archive (tx_from) TABLESPACE tethera_archive",
     "swaps_archive_block_idx": "CREATE INDEX swaps_archive_block_idx ON swaps_archive (block_number) TABLESPACE tethera_archive",
-    "swaps_archive_pkey": "ALTER TABLE swaps_archive ADD PRIMARY KEY (tx_hash, log_index) USING INDEX TABLESPACE tethera_archive",
+    "swaps_archive_block_log_key": "CREATE UNIQUE INDEX swaps_archive_block_log_key ON swaps_archive (block_number, log_index) TABLESPACE tethera_archive",
 }
 
 _ck: dict[str, str] = {}
@@ -94,11 +94,9 @@ def pg_exec(sql_list):
 def drop_indexes():
     with psycopg.connect(DB) as conn:
         have = {r[0] for r in conn.execute("SELECT indexname FROM pg_indexes WHERE tablename='swaps_archive'")}
-    stmts = []
-    if "swaps_archive_pkey" in have: stmts.append("ALTER TABLE swaps_archive DROP CONSTRAINT swaps_archive_pkey")
-    stmts += [f"DROP INDEX IF EXISTS {n}" for n in INDEXES if n != "swaps_archive_pkey" and n in have]
+    stmts = [f"DROP INDEX IF EXISTS {n}" for n in INDEXES if n in have]
     if stmts:
-        subprocess.run(["launchctl", "unload", PLIST], check=False); log("archive job unloaded while the primary key is down")
+        subprocess.run(["launchctl", "unload", PLIST], check=False); log("archive job unloaded while the unique key is down")
         pg_exec(stmts)
 
 def finish():

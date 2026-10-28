@@ -72,7 +72,7 @@ stop = threading.Event()
 
 INSERT = """INSERT INTO swaps_archive (protocol, pool, block_number, block_time, tx_hash, log_index, event_sender,
             recipient, tx_from, amount0, amount1, direction)
-            VALUES (%s,%s,%s,to_timestamp(%s),%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (tx_hash, log_index) DO NOTHING"""
+            VALUES (%s,%s,%s,to_timestamp(%s),%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT (block_number, log_index) DO NOTHING"""
 
 def worker(i: int):
     rpc = Rpc(url=ARCHIVE_RPC, retries=60, limiter=limiter)
